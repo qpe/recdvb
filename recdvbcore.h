@@ -35,9 +35,9 @@ typedef struct sock_data {
 	struct sockaddr_in addr;
 } sock_data;
 
-typedef struct msgbuf {
+typedef struct message_buf {
 	long mtype;
-	char mtext[MSGSZ];
+	char mtext[MSGSZ + 1];
 } message_buf;
 
 typedef struct thread_data {

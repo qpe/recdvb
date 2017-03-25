@@ -26,7 +26,6 @@ int parse_time(char *rectimestr, int *recsec)
 	/* indefinite */
 	if(!strcmp("-", rectimestr)) {
 		*recsec = -1;
-		return 0;
 	}
 	/* colon */
 	else if(strchr(rectimestr, ':')) {
@@ -38,7 +37,6 @@ int parse_time(char *rectimestr, int *recsec)
 		else
 			return 1; /* unsuccessful */
 
-		return 0;
 	}
 	/* HMS */
 	else {
@@ -81,8 +79,7 @@ int parse_time(char *rectimestr, int *recsec)
 
 		free(tmpstr);
 
-		return 0;
 	} /* else */
 
-	return 1; /* unsuccessful */
+	return 0;
 }

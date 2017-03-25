@@ -56,8 +56,6 @@ int b25_decode(decoder *dec,
 		ARIB_STD_B25_BUFFER *sbuf,
 		ARIB_STD_B25_BUFFER *dbuf);
 int b25_finish(decoder *dec,
-		ARIB_STD_B25_BUFFER *sbuf,
 		ARIB_STD_B25_BUFFER *dbuf);
-
 
 #endif

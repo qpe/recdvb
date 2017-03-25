@@ -29,17 +29,16 @@ extern bool f_exit;
 
 const static char *_voltage[] = {"0V", "11V", "15V"};
 
-static void cleanup(thread_data *tdata)
+static void cleanup()
 {
 	f_exit = true;
 }
 
 /* will be signal handler thread */
-static void * process_signals(void *data)
+static void * process_signals()
 {
 	sigset_t waitset;
 	int sig;
-	thread_data *tdata = (thread_data *)data;
 
 	sigemptyset(&waitset);
 	sigaddset(&waitset, SIGINT);
@@ -51,21 +50,21 @@ static void * process_signals(void *data)
 	switch(sig) {
 	case SIGINT:
 		fprintf(stderr, "\nSIGINT received. cleaning up...\n");
-		cleanup(tdata);
+		cleanup();
 		break;
 	case SIGTERM:
 		fprintf(stderr, "\nSIGTERM received. cleaning up...\n");
-		cleanup(tdata);
+		cleanup();
 		break;
 	case SIGUSR1: /* normal exit*/
-		cleanup(tdata);
+		cleanup();
 		break;
 	}
 
 	return NULL; /* dummy */
 }
 
-static void init_signal_handlers(pthread_t *signal_thread, thread_data *tdata)
+static void init_signal_handlers(pthread_t *signal_thread)
 {
 	sigset_t blockset;
 
@@ -77,7 +76,7 @@ static void init_signal_handlers(pthread_t *signal_thread, thread_data *tdata)
 	if(pthread_sigmask(SIG_BLOCK, &blockset, NULL))
 		fprintf(stderr, "pthread_sigmask() failed.\n");
 
-	pthread_create(signal_thread, NULL, process_signals, tdata);
+	pthread_create(signal_thread, NULL, process_signals, NULL);
 }
 
 static void show_usage(char *cmd)
@@ -122,12 +121,10 @@ int main(int argc, char **argv)
 			show_options();
 			fprintf(stderr, "\n");
 			exit(0);
-			break;
 		case 'v':
 			fprintf(stderr, "%s %s\n", argv[0], version);
 			fprintf(stderr, "signal check utility for DVB tuner.\n");
 			exit(0);
-			break;
 		/* following options require argument */
 		case 'd':
 			dev_num = atoi(optarg);
@@ -160,7 +157,7 @@ int main(int argc, char **argv)
 	tdata.tune_persistent = true;
 
 	/* spawn signal handler thread */
-	init_signal_handlers(&signal_thread, &tdata);
+	init_signal_handlers(&signal_thread);
 
 	/* tune */
 	if(tune(argv[optind], &tdata, dev_num, 0) != 0)

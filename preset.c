@@ -24,7 +24,7 @@
 static const struct {
 	int lch;
 	char *channel;
-	int tsid;
+	unsigned int tsid;
 } preset_ch[NUM_PRESET_CH] = {
 	{ 101, "bs15_0", 0x40f1 }, { 103, "bs15_1", 0x40f2 },
 	{ 141, "bs13_0", 0x40d0 }, { 151, "bs01_0", 0x4010 },

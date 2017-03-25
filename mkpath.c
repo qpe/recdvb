@@ -8,6 +8,8 @@
 #include <string.h>
 #include <errno.h>
 
+#include "mkpath.h"
+
 static int do_mkdir(const char *path, mode_t mode)
 {
 	struct stat st;

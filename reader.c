@@ -69,7 +69,7 @@ void *reader_func(void *p)
 		}
 
 		sbuf.data = qbuf->buffer;
-		sbuf.size = qbuf->size;
+		sbuf.size = (int32_t)qbuf->size;
 
 		buf = sbuf; /* default */
 
@@ -89,7 +89,7 @@ void *reader_func(void *p)
 
 			/* allocate split buffer */
 			if(splitbuf.buffer_size < buf.size && buf.size > 0) {
-				splitbuf.buffer = realloc(splitbuf.buffer, buf.size);
+				splitbuf.buffer = realloc(splitbuf.buffer, (size_t)buf.size);
 				if(splitbuf.buffer == NULL) {
 					fprintf(stderr, "split buffer allocation failed\n");
 					use_splitter = false;
@@ -146,7 +146,7 @@ void *reader_func(void *p)
 		int offset = 0;
 
 		while(size_remain > 0) {
-			int ws = size_remain < SIZE_CHANK ? size_remain : SIZE_CHANK;
+			size_t ws = size_remain < SIZE_CHANK ? (size_t)size_remain : SIZE_CHANK;
 
 			wc = write(wfd, buf.data + offset, ws);
 			if(wc < 0) {
@@ -169,7 +169,7 @@ void *reader_func(void *p)
 			buf = sbuf; /* default */
 
 			if(use_b25) {
-				code = b25_finish(dec, &sbuf, &dbuf);
+				code = b25_finish(dec, &dbuf);
 				if(code < 0)
 					fprintf(stderr, "b25_finish failed\n");
 				else
@@ -193,7 +193,7 @@ void *reader_func(void *p)
 			}
 
 			if(!file_err) {
-				wc = write(wfd, buf.data, buf.size);
+				wc = write(wfd, buf.data, (size_t)buf.size);
 				if(wc < 0) {
 					perror("write");
 					file_err = 1;

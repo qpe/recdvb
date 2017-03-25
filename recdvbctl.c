@@ -61,7 +61,7 @@ int main(int argc, char **argv)
 
 	int result;
 	int option_index;
-	unsigned int tsid = 0;
+	int tsid = 0;
 	struct option long_options[] = {
 		{ "pid",     1, NULL, 'p'},
 		{ "channel", 1, NULL, 'c'},
@@ -83,12 +83,10 @@ int main(int argc, char **argv)
 			show_options();
 			fprintf(stderr, "\n");
 			exit(0);
-			break;
 		case 'v':
 			fprintf(stderr, "%s %s\n", argv[0], version);
 			fprintf(stderr, "control command for recdvb.\n");
 			exit(0);
-			break;
 		/* following options require argument */
 		case 'p':
 			key = (key_t)atoi(optarg);
@@ -115,6 +113,10 @@ int main(int argc, char **argv)
 			if(strlen(optarg) > 2)
 				if((optarg[0] == '0') && ((optarg[1] == 'X') || (optarg[1] == 'x')))
 					sscanf(optarg + 2, "%x", &tsid);
+			if(tsid < 0) {
+				fprintf(stderr, "tsid must be greater than 0.\n");
+				exit(1);
+			}
 			fprintf(stderr, "tsid = 0x%x\n", tsid);
 			break;
 		}
@@ -126,7 +128,7 @@ int main(int argc, char **argv)
 		exit(1);
 	}
 
-	if ((msqid = msgget(key, msgflg )) < 0) {
+	if ((msqid = msgget(key, msgflg)) < 0) {
 		perror("msgget");
 		exit(1);
 	}

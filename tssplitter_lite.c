@@ -31,7 +31,7 @@ static int AnalyzePat(splitter *sp, unsigned char *buf);
 static int RecreatePat(splitter *sp, unsigned char *buf, int *pos);
 static char** AnalyzeSid(char *sid);
 static int AnalyzePmt(splitter *sp, unsigned char *buf, unsigned char mark);
-static int GetCrc32(unsigned char *data, int len);
+static uint32_t GetCrc32(unsigned char *data, int len);
 static int GetPid(unsigned char *data);
 
 /**
@@ -40,10 +40,10 @@ static int GetPid(unsigned char *data);
  */
 static char** AnalyzeSid(char* sid)
 {
-	int i = 0;
+	size_t i = 0;
 	char** sid_list = NULL;
 	char* p;
-	int CommaNum = 0;
+	size_t CommaNum = 0;
 
 	/* sid は次の形式の引数を許容する */
 	/* 指定無し */
@@ -570,7 +570,7 @@ static int AnalyzePat(splitter *sp, unsigned char *buf)
 static int RecreatePat(splitter *sp, unsigned char *buf, int *pos)
 {
 	unsigned char y[LENGTH_CRC_DATA];
-	int crc;
+	uint32_t crc;
 	int i;
 	int j;
 	int pos_i;
@@ -648,7 +648,7 @@ static int AnalyzePmt(splitter *sp, unsigned char *buf, unsigned char mark)
 	int pid;
 	int retry_count = 0;
 	int count;
-	int payload_offset;	// offset to payload
+	unsigned char payload_offset;	// offset to payload
 
 	pid = GetPid(&buf[1]);
 	if (buf[1] & 0x40) {		// PES開始インジケータ
@@ -668,7 +668,7 @@ static int AnalyzePmt(splitter *sp, unsigned char *buf, unsigned char mark)
 
 		// ECM
 		N = ((buf[payload_offset + 10] & 0x0F) << 8) + buf[payload_offset + 11] + payload_offset + 12;	// ES情報開始点
-		int p = payload_offset + 12;
+		unsigned int p = payload_offset + 12;
 
 		while(p < N) {
 			uint32_t ca_pid;
@@ -725,9 +725,9 @@ static int AnalyzePmt(splitter *sp, unsigned char *buf, unsigned char mark)
 /**
  * CRC 計算
  */
-static int GetCrc32(unsigned char* data, int len)
+static uint32_t GetCrc32(unsigned char* data, int len)
 {
-	int crc;
+	uint32_t crc;
 	int i, j;
 	int c;
 	int bit;
@@ -735,7 +735,7 @@ static int GetCrc32(unsigned char* data, int len)
 	crc = 0xFFFFFFFF;
 	for (i = 0; i < len; i++)
 	{
-		char x;
+		unsigned char x;
 		x = data[i];
 
 		for (j = 0; j < 8; j++)

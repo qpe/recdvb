@@ -104,7 +104,7 @@ int b25_decode(decoder *dec, ARIB_STD_B25_BUFFER *sbuf, ARIB_STD_B25_BUFFER *dbu
 	return code;
 }
 
-int b25_finish(decoder *dec, ARIB_STD_B25_BUFFER *sbuf, ARIB_STD_B25_BUFFER *dbuf)
+int b25_finish(decoder *dec, ARIB_STD_B25_BUFFER *dbuf)
 {
 	int code;
 
@@ -144,7 +144,6 @@ int b25_decode(decoder *dec,
 }
 
 int b25_finish(decoder *dec,
-		ARIB_STD_B25_BUFFER *sbuf,
 		ARIB_STD_B25_BUFFER *dbuf)
 {
 	return 0;

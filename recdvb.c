@@ -49,7 +49,7 @@
 extern bool f_exit;
 
 /* will be ipc message receive thread */
-void * mq_recv(void *t)
+static void * mq_recv(void *t)
 {
 	thread_data *tdata = (thread_data *)t;
 	message_buf rbuf;
@@ -131,7 +131,7 @@ static void show_options(void)
 	fprintf(stderr, "--version:           Show version\n");
 }
 
-void cleanup(thread_data *tdata)
+static void cleanup(thread_data *tdata)
 {
 	f_exit = true;
 
@@ -140,7 +140,7 @@ void cleanup(thread_data *tdata)
 }
 
 /* will be signal handler thread */
-void * process_signals(void *t)
+static void * process_signals(void *t)
 {
 	sigset_t waitset;
 	int sig;
@@ -180,7 +180,7 @@ void * process_signals(void *t)
 	return NULL; /* dummy */
 }
 
-void init_signal_handlers(pthread_t *signal_thread, thread_data *tdata)
+static void init_signal_handlers(pthread_t *signal_thread, thread_data *tdata)
 {
 	sigset_t blockset;
 
@@ -272,12 +272,10 @@ int main(int argc, char **argv)
 			show_options();
 			fprintf(stderr, "\n");
 			exit(0);
-			break;
 		case 'v':
 			fprintf(stderr, "%s %s\n", argv[0], version);
 			fprintf(stderr, "recorder command for DVB tuner.\n");
 			exit(0);
-			break;
 		/* following options require argument */
 		case 'n':
 			val = atoi(optarg);
@@ -307,7 +305,7 @@ int main(int argc, char **argv)
 			sid_list = optarg;
 			break;
 		case 't':
-			tsid = atoi(optarg);
+			tsid = (unsigned int)atoi(optarg);
 			if(strlen(optarg) > 2){
 				if((optarg[0] == '0') && ((optarg[1] == 'X') ||(optarg[1] == 'x'))){
 					sscanf(optarg+2, "%x", &tsid);

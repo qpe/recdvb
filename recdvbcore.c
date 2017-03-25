@@ -14,6 +14,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>
@@ -32,12 +33,8 @@
 
 #include "recdvbcore.h"
 
-#define ISDB_T_NODE_LIMIT 24        // 32:ARIB limit 24:program maximum
-#define ISDB_T_SLOT_LIMIT 8
-
 /* globals */
 bool f_exit = false;
-char bs_channel_buf[8];
 
 static int fefd = 0;
 static int dmxfd = 0;
@@ -123,11 +120,11 @@ static int open_tuner(int dev_num, struct dvb_frontend_info *fe_info)
 
 static int set_ofdm_frequency(const char *channel, struct dtv_property *prop)
 {
-	int fe_freq;
+	uint32_t fe_freq;
 
 	prop->cmd = DTV_FREQUENCY;
 
-	if( (fe_freq = atoi(channel)) == 0){
+	if( (fe_freq = (uint32_t)atoi(channel)) == 0){
 		fprintf(stderr, "channel is not number\n");
 		return 1;
 	}
@@ -140,20 +137,20 @@ static int set_ofdm_frequency(const char *channel, struct dtv_property *prop)
 
 static int set_qpsk_frequency(const char *channel, struct dtv_property *prop)
 {
-	int fe_freq;
+	uint32_t fe_freq;
 
 	prop->cmd = DTV_FREQUENCY;
 
 	if( ((channel[0] == 'b') || (channel[0] == 'B')) &&
 	    ((channel[1] == 's') || (channel[1] == 'S')) ){
-		if( (fe_freq = atoi(channel + 2)) == 0){
+		if( (fe_freq = (uint32_t)atoi(channel + 2)) == 0){
 			fprintf(stderr, "channel is not BSnn\n\tnn=numeric\n");
 			return 1;
 		}
 		prop->u.data = fe_freq * 19180 + 1030300;
 	} else if( ((channel[0] == 'n')||(channel[0] == 'N')) &&
 		   ((channel[1] == 'd')||(channel[1] == 'D')) ){
-		if( (fe_freq = atoi(channel + 2)) == 0){
+		if( (fe_freq = (uint32_t)atoi(channel + 2)) == 0){
 			fprintf(stderr, "channel is not NDnn\n\tnn=numeric\n");
 			return 1;
 		}
@@ -186,46 +183,45 @@ int tune(char *channel, thread_data *tdata, int dev_num, unsigned int tsid)
 	fprintf(stderr,"Using DVB card \"%s\"\n",fe_info.name);
 
 	/* specify command */
-	i = 0;
+	props.num = 0;
 	if(fe_info.type == FE_OFDM){
 		tdata->lnb = 0; /* lnb is unavailable */
-		rc = set_ofdm_frequency(channel, &prop[i]);
+		rc = set_ofdm_frequency(channel, &prop[props.num]);
 		if(rc != 0) return 1;
-		i++;
+		props.num++;
 	} else {
 		if(lnb == 0) {
 			lnb = 1;
-			prop[i].cmd = DTV_VOLTAGE;
+			prop[props.num].cmd = DTV_VOLTAGE;
 			switch(tdata->lnb) {
 			case 2:
-				prop[i].u.data = SEC_VOLTAGE_18;
+				prop[props.num].u.data = SEC_VOLTAGE_18;
 				break;
 			case 1:
-				prop[i].u.data = SEC_VOLTAGE_13;
+				prop[props.num].u.data = SEC_VOLTAGE_13;
 				break;
 			default:
-				prop[i].u.data = SEC_VOLTAGE_OFF;
+				prop[props.num].u.data = SEC_VOLTAGE_OFF;
 				break;
 			}
-			i++;
+			props.num++;
 		}
-		rc = set_qpsk_frequency(channel, &prop[i]);
+		rc = set_qpsk_frequency(channel, &prop[props.num]);
 		if(rc != 0) return 1;
-		i++;
+		props.num++;
 	}
 #ifdef DTV_STREAM_ID
-	prop[i].cmd = DTV_STREAM_ID;
+	prop[props.num].cmd = DTV_STREAM_ID;
 #else
-	prop[i].cmd = DTV_ISDBS_TS_ID;
+	prop[props.num].cmd = DTV_ISDBS_TS_ID;
 #endif
-	prop[i].u.data = tsid;
-	i++;
+	prop[props.num].u.data = tsid;
+	props.num++;
 
-	prop[i].cmd = DTV_TUNE;
-	i++;
+	prop[props.num].cmd = DTV_TUNE;
+	props.num++;
 
 	props.props = prop;
-	props.num = i;
 
 	if (ioctl(fefd, FE_SET_PROPERTY, &props) == -1) {
 		perror("ioctl FE_SET_PROPERTY failed.\n");
