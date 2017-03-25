@@ -73,7 +73,7 @@ void set_lch(char *lch, char **ppch, char **sid, unsigned int *tsid)
 void set_bs_tsid(char *pch, unsigned int *tsid)
 {
 	int i;
-	char channel[8];
+	char channel[8] = {0};
 	if (((pch[0] == 'b')|| (pch[0] == 'B')) && ((pch[1] == 's') || (pch[1] == 'S'))) {
 		channel[0] = 'b';
 		channel[1] = 's';
@@ -81,7 +81,7 @@ void set_bs_tsid(char *pch, unsigned int *tsid)
 		*tsid = 0;
 		return;
 	}
-	for (i = 2; pch[i] != '\0'; i++) {
+	for (i = 2; i < 7 && pch[i] != '\0'; i++) {
 		channel[i] = pch[i];
 	}
 	pch[i] = '\0';
