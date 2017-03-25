@@ -8,7 +8,8 @@ Based on recdvb published on http://cgi1.plala.or.jp/~sat/
 recdvb - command to record ISDB-T/S signals for linux DVB devices.
 Maintain for pt3 with mirakurun.
 
-## altnertive
+
+## Alternative
 
 - original - [http://cgi1.plala.or.jp/~sat/](http://cgi1.plala.or.jp/~sat/)
 - ver.dogeel - [https://github.com/dogeel/recdvb](https://github.com/dogeel/recdvb)
@@ -24,12 +25,30 @@ Maintain for pt3 with mirakurun.
  $ recdvbctl --help
 ```
 
+- sample `mirakurun config tuners`
+```
+- name: PT3-S1
+  types:
+    - BS
+    - CS
+  command: recdvb --dev 0 --b25 --lnb 15 <channel> - -
+  isDisabled: false
+
+- name: PT3-T1
+  types:
+    - GR
+    command: recdvb --dev 1 --b25 <channel> - -
+    isDisabled: false
+```
+
+
 ## Requirement
 
 - dvb drivers
 - gcc / clang
 
-## how to install
+
+## Install
 
 ```bash
  $ ./autogen.sh
@@ -39,16 +58,18 @@ Maintain for pt3 with mirakurun.
 ```
 
 
-## tested environment
+## Tested environment
 
 - Device: PT3(with kernel 4.9.6 earth_pt3 driver)
 - Software: Mirakurun
 
-## license
+
+## License
 
 - GPLv3
 
-## contributor
+
+## Contributor
 
 - [Sat](http://cgi1.plala.or.jp/~sat/) -> Base
 - [2GMon](https://github.com/2GMon) -> [this patch](https://gist.github.com/2GMon/3621dd5054ab20c2a8c565fc236de093)
