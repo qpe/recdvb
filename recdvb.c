@@ -93,6 +93,48 @@ static void * mq_recv(void *t)
 	}
 }
 
+/*
+ * for options
+ */
+
+static const char short_options[] = "br:smn:d:hvi:t:c";
+static const struct option long_options[] = {
+#ifdef HAVE_LIBARIB25
+	{ "b25",       0, NULL, 'b'},
+	{ "B25",       0, NULL, 'b'},
+	{ "round",     1, NULL, 'r'},
+	{ "strip",     0, NULL, 's'},
+	{ "emm",       0, NULL, 'm'},
+	{ "EMM",       0, NULL, 'm'},
+#endif
+	{ "LNB",       1, NULL, 'n'},
+	{ "lnb",       1, NULL, 'n'},
+	{ "dev",       1, NULL, 'd'},
+	{ "help",      0, NULL, 'h'},
+	{ "version",   0, NULL, 'v'},
+	{ "sid",       1, NULL, 'i'},
+	{ "tsid",      1, NULL, 't'},
+	{ "lch",       0, NULL, 'c'},
+	{ 0,           0, NULL,  0 } /* terminate */
+};
+
+static const char options_desc[] =
+"Options:\n"
+#ifdef HAVE_LIBARIB25
+"  -b, --b25:               Decrypt using BCAS card\n"
+"    -r, --round N:         Specify round number\n"
+"    -s, --strip:           Strip null stream\n"
+"    -m, --EMM:             Instruct EMM operation\n"
+#endif
+"  -d, --dev N:             Use DVB device /dev/dvb/adapterN\n"
+"  -n, --lnb voltage:       Specify LNB voltage (0, 11, 15)\n"
+"  -i, --sid SID1,SID2,...: Specify SID number in CSV format (101,102,...)\n"
+"  -t, --tsid TSID:         Specify TSID in decimal or hex, hex begins '0x'\n"
+"  -c, --lch:               Specify channel as BS/CS logical channel\n"
+"                           instead of physical one\n"
+"  -h, --help:              Show this help\n"
+"  -v, --version:           Show version\n";
+
 static void show_usage(char *cmd)
 {
 	fprintf(stderr, "Usage: \n%s "
@@ -115,20 +157,7 @@ static void show_usage(char *cmd)
 
 static void show_options(void)
 {
-	fprintf(stderr, "Options:\n");
-#ifdef HAVE_LIBARIB25
-	fprintf(stderr, "--b25:               Decrypt using BCAS card\n");
-	fprintf(stderr, "  --round N:         Specify round number\n");
-	fprintf(stderr, "  --strip:           Strip null stream\n");
-	fprintf(stderr, "  --EMM:             Instruct EMM operation\n");
-#endif
-	fprintf(stderr, "--dev N:             Use DVB device /dev/dvb/adapterN\n");
-	fprintf(stderr, "--lnb voltage:       Specify LNB voltage (0, 11, 15)\n");
-	fprintf(stderr, "--sid SID1,SID2,...: Specify SID number in CSV format (101,102,...)\n");
-	fprintf(stderr, "--tsid TSID:         Specify TSID in decimal or hex, hex begins '0x'\n");
-	fprintf(stderr, "--lch:               Specify channel as BS/CS logical channel instead of physical one\n");
-	fprintf(stderr, "--help:              Show this help\n");
-	fprintf(stderr, "--version:           Show version\n");
+	fprintf(stderr, options_desc);
 }
 
 static void cleanup(thread_data *tdata)
@@ -219,25 +248,7 @@ int main(int argc, char **argv)
 
 	int result;
 	int option_index;
-	struct option long_options[] = {
-#ifdef HAVE_LIBARIB25
-		{ "b25",       0, NULL, 'b'},
-		{ "B25",       0, NULL, 'b'},
-		{ "round",     1, NULL, 'r'},
-		{ "strip",     0, NULL, 's'},
-		{ "emm",       0, NULL, 'm'},
-		{ "EMM",       0, NULL, 'm'},
-#endif
-		{ "LNB",       1, NULL, 'n'},
-		{ "lnb",       1, NULL, 'n'},
-		{ "dev",       1, NULL, 'd'},
-		{ "help",      0, NULL, 'h'},
-		{ "version",   0, NULL, 'v'},
-		{ "sid",       1, NULL, 'i'},
-		{ "tsid",      1, NULL, 't'},
-		{ "lch",       0, NULL, 'c'},
-		{ 0,           0, NULL,  0 } /* terminate */
-	};
+
 
 	bool use_b25 = false;
 	bool use_stdout = false;
@@ -250,7 +261,7 @@ int main(int argc, char **argv)
 	unsigned int tsid = 0;
 	char *pch = NULL;
 
-	while((result = getopt_long(argc, argv, "br:smn:p:d:hvit:c",
+	while((result = getopt_long(argc, argv, short_options,
 			long_options, &option_index)) != -1) {
 		switch(result) {
 		case 'b':
