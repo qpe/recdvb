@@ -210,7 +210,7 @@ void *reader_func(void *p)
 
 			break;
 		}
-	}
+	} /* while(1) */
 
 	time_t cur_time;
 	time(&cur_time);

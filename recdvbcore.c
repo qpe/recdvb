@@ -41,10 +41,33 @@ char bs_channel_buf[8];
 
 static int fefd = 0;
 static int dmxfd = 0;
+static int lnb = 0;
+
+static int set_lnb_off(const thread_data *tdata)
+{
+	struct dtv_property prop;
+	struct dtv_properties props;
+	if(tdata->lnb == 0) return 0;
+	if(lnb == 0) return 0;
+	if(fefd <= 0) return 0;
+
+	prop.cmd = DTV_VOLTAGE;
+	prop.u.data = SEC_VOLTAGE_OFF;
+	props.props = &prop;
+	props.num = 1;
+
+	if (ioctl(fefd, FE_SET_PROPERTY, &props) == -1) {
+		perror("ioctl FE_SET_PROPERTY(set_lnb_off) failed.\n");
+		return 1;
+	}
+	lnb = 0;
+	return 0;
+}
 
 void close_tuner(thread_data *tdata)
 {
 	if(fefd > 0){
+		set_lnb_off(tdata);
 		close(fefd);
 		fefd = 0;
 	}
@@ -84,7 +107,7 @@ static int open_tuner(int dev_num, struct dvb_frontend_info *fe_info)
 		fprintf(stderr, "device = %s\n", device);
 	}
 
-	if ( (ioctl(fefd,FE_GET_INFO, fe_info) < 0)){
+	if ( (ioctl(fefd, FE_GET_INFO, fe_info) < 0)){
 		fprintf(stderr, "FE_GET_INFO failed\n");
 		return 1;
 	}
@@ -98,13 +121,58 @@ static int open_tuner(int dev_num, struct dvb_frontend_info *fe_info)
 	return 0;
 }
 
+static int set_ofdm_frequency(const char *channel, struct dtv_property *prop)
+{
+	int fe_freq;
+
+	prop->cmd = DTV_FREQUENCY;
+
+	if( (fe_freq = atoi(channel)) == 0){
+		fprintf(stderr, "channel is not number\n");
+		return 1;
+	}
+
+	prop->u.data = (fe_freq * 6000 + 395143) * 1000;
+	fprintf(stderr,"tuning to %d kHz\n",prop->u.data / 1000);
+
+	return 0;
+}
+
+static int set_qpsk_frequency(const char *channel, struct dtv_property *prop)
+{
+	int fe_freq;
+
+	prop->cmd = DTV_FREQUENCY;
+
+	if( ((channel[0] == 'b') || (channel[0] == 'B')) &&
+	    ((channel[1] == 's') || (channel[1] == 'S')) ){
+		if( (fe_freq = atoi(channel + 2)) == 0){
+			fprintf(stderr, "channel is not BSnn\n\tnn=numeric\n");
+			return 1;
+		}
+		prop->u.data = fe_freq * 19180 + 1030300;
+	} else if( ((channel[0] == 'n')||(channel[0] == 'N')) &&
+		   ((channel[1] == 'd')||(channel[1] == 'D')) ){
+		if( (fe_freq = atoi(channel + 2)) == 0){
+			fprintf(stderr, "channel is not NDnn\n\tnn=numeric\n");
+			return 1;
+		}
+		prop->u.data = fe_freq * 20000 + 1573000;
+	} else {
+		fprintf(stderr, "channel is invalid\n");
+		return 1;
+	}
+
+	fprintf(stderr,"tuning to %d MHz\n",prop->u.data / 1000);
+	return 0;
+}
+
 /* from checksignal.c */
 int tune(char *channel, thread_data *tdata, int dev_num, unsigned int tsid)
 {
-	struct dtv_property prop[3];
+	struct dtv_property prop[4];
 	struct dtv_properties props;
 	struct dvb_frontend_info fe_info;
-	int fe_freq;
 	int rc, i;
 	struct dmx_pes_filter_params filter;
 	struct dvb_frontend_event event;
@@ -116,48 +184,48 @@ int tune(char *channel, thread_data *tdata, int dev_num, unsigned int tsid)
 	if(rc != 0) return 1;
 
 	fprintf(stderr,"Using DVB card \"%s\"\n",fe_info.name);
-	prop[0].cmd = DTV_FREQUENCY;
+
+	/* specify command */
+	i = 0;
 	if(fe_info.type == FE_OFDM){
-		if( (fe_freq = atoi(channel)) == 0){
-			fprintf(stderr, "channel is not number\n");
-			return 1;
-		}
-		prop[0].u.data = (fe_freq * 6000 + 395143) * 1000;
-		fprintf(stderr,"tuning to %d kHz\n",prop[0].u.data / 1000);
+		tdata->lnb = 0; /* lnb is unavailable */
+		rc = set_ofdm_frequency(channel, &prop[i]);
+		if(rc != 0) return 1;
+		i++;
 	} else {
-		/* FE_QPSK */
-		if( ((channel[0] == 'b') || (channel[0] == 'B')) &&
-		    ((channel[1] == 's') || (channel[1] == 'S')) ){
-			if( (fe_freq = atoi(channel+2)) == 0){
-				fprintf(stderr, "channel is not BSnn\n\tnn=numeric\n");
-				return 1;
+		if(lnb == 0) {
+			lnb = 1;
+			prop[i].cmd = DTV_VOLTAGE;
+			switch(tdata->lnb) {
+			case 2:
+				prop[i].u.data = SEC_VOLTAGE_18;
+				break;
+			case 1:
+				prop[i].u.data = SEC_VOLTAGE_13;
+				break;
+			default:
+				prop[i].u.data = SEC_VOLTAGE_OFF;
+				break;
 			}
-			/* BS */
-			prop[0].u.data = fe_freq * 19180 + 1030300;
-		} else if( ((channel[0] == 'n')||(channel[0] == 'N')) &&
-			   ((channel[1] == 'd')||(channel[1] == 'D')) ){
-			if( (fe_freq = atoi(channel + 2)) == 0){
-				fprintf(stderr, "channel is not NDnn\n\tnn=numeric\n");
-				return 1;
-			}
-			/* ND */
-			prop[0].u.data = fe_freq * 20000 + 1573000;
-		} else {
-			fprintf(stderr, "channel is invalid\n");
-			return 1;
+			i++;
 		}
-		fprintf(stderr,"tuning to %d MHz\n",prop[0].u.data / 1000);
+		rc = set_qpsk_frequency(channel, &prop[i]);
+		if(rc != 0) return 1;
+		i++;
 	}
 #ifdef DTV_STREAM_ID
-	prop[1].cmd = DTV_STREAM_ID;
+	prop[i].cmd = DTV_STREAM_ID;
 #else
-	prop[1].cmd = DTV_ISDBS_TS_ID;
+	prop[i].cmd = DTV_ISDBS_TS_ID;
 #endif
-	prop[1].u.data = tsid;
-	prop[2].cmd = DTV_TUNE;
+	prop[i].u.data = tsid;
+	i++;
+
+	prop[i].cmd = DTV_TUNE;
+	i++;
 
 	props.props = prop;
-	props.num = 3;
+	props.num = i;
 
 	if (ioctl(fefd, FE_SET_PROPERTY, &props) == -1) {
 		perror("ioctl FE_SET_PROPERTY failed.\n");
@@ -166,14 +234,14 @@ int tune(char *channel, thread_data *tdata, int dev_num, unsigned int tsid)
 
 	pfd[0].fd = fefd;
 	pfd[0].events = POLLIN;
-	event.status=0;
+	event.status = 0;
 	fprintf(stderr,"polling");
 	for (i = 0; i < 5; i++) {
 		if ((event.status & FE_TIMEDOUT) != 0) break;
 		if ((event.status & FE_HAS_LOCK) != 0) break;
 
 		fprintf(stderr, ".");
-		if (!poll(pfd,1,5000)) continue;
+		if (!poll(pfd, 1, 5000)) continue;
 		if (!(pfd[0].revents & POLLIN)) continue;
 		  if ((rc = ioctl(fefd, FE_GET_EVENT, &event)) < 0){
 		  	if (errno != EOVERFLOW) {
