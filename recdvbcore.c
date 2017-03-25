@@ -13,6 +13,7 @@
 #include <linux/dvb/frontend.h>
 
 #include "version.h"
+#include "queue.h"
 
 #include "recdvbcore.h"
 

@@ -17,7 +17,7 @@ LIBS2    = -lm
 LIBS3    = -lpthread -lm
 LDFLAGS  =
 
-OBJS  = recdvb.o decoder.o mkpath.o time.o tssplitter_lite.o recdvbcore.o
+OBJS  = recdvb.o decoder.o mkpath.o time.o tssplitter_lite.o recdvbcore.o queue.o reader.o preset.o
 OBJS2 = recdvbctl.o recdvbcore.o time.o
 OBJS3 = checksignal.o recdvbcore.o time.o
 OBJALL = $(OBJS) $(OBJS2) $(OBJS3)

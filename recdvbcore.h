@@ -6,7 +6,7 @@
 #include <netinet/in.h>
 
 #include "decoder.h"
-#include "recdvb.h"
+#include "queue.h"
 #include "tssplitter_lite.h"
 
 /* ipc message size */

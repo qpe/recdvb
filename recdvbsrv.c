@@ -1,23 +1,32 @@
-#include <errno.h>
-#include <math.h>
 #include <stdio.h>
 #include <stdbool.h>
 #include <stdlib.h>
-#include <string.h>
-#include <signal.h>
-#include <time.h>
 
-#include <ctype.h>
 #include <fcntl.h>
-#include <getopt.h>
-#include <libgen.h>
+#include <time.h>
+#include <string.h>
 #include <pthread.h>
+#include <math.h>
+#include <getopt.h>
 #include <unistd.h>
+#include <signal.h>
+#include <errno.h>
+#include <ctype.h>
+#include <libgen.h>
 
-#include <sys/ioctl.h>
+#include <netdb.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+
 #include <sys/ipc.h>
 #include <sys/msg.h>
+#include <sys/time.h>
 #include <sys/types.h>
+#include <sys/stat.h>
+
+#include <sys/ioctl.h>
+#include <sys/socket.h>
+#include <sys/uio.h>
 
 #include "recdvbcore.h"
 #include "mkpath.h"
@@ -110,6 +119,8 @@ static void show_usage(char *cmd)
 #ifdef HAVE_LIBARIB25
 		"[--b25 [--round N] [--strip] [--EMM]] "
 #endif
+		"[--udp [--addr hostname --port portnumber]] "
+		"[--http portnumber] "
 		"[--dev devicenumber] "
 		"[--lnb voltage] "
 		"[--sid SID1,SID2] "
@@ -133,6 +144,10 @@ static void show_options(void)
 	fprintf(stderr, "  --strip:           Strip null stream\n");
 	fprintf(stderr, "  --EMM:             Instruct EMM operation\n");
 #endif
+	fprintf(stderr, "--udp:               Turn on udp broadcasting\n");
+	fprintf(stderr, "  --addr hostname:   Hostname or address to connect\n");
+	fprintf(stderr, "  --port portnumber: Port number to connect\n");
+	fprintf(stderr, "--http portnumber:   Turn on http broadcasting (run as a daemon)\n");
 	fprintf(stderr, "--dev N:             Use DVB device /dev/dvb/adapterN\n");
 	fprintf(stderr, "--lnb voltage:       Specify LNB voltage (0, 11, 15)\n");
 	fprintf(stderr, "--sid SID1,SID2,...: Specify SID number in CSV format (101,102,...)\n");
@@ -244,6 +259,10 @@ int main(int argc, char **argv)
 #endif
 		{ "LNB",       1, NULL, 'n'},
 		{ "lnb",       1, NULL, 'n'},
+		{ "udp",       0, NULL, 'u'},
+		{ "addr",      1, NULL, 'a'},
+		{ "port",      1, NULL, 'p'},
+		{ "http",      1, NULL, 'H'},
 		{ "dev",       1, NULL, 'd'},
 		{ "help",      0, NULL, 'h'},
 		{ "version",   0, NULL, 'v'},
@@ -254,21 +273,30 @@ int main(int argc, char **argv)
 	};
 
 	bool use_b25 = false;
+	bool use_udp = false;
+	bool use_http = false;
+	bool fileless = false;
 	bool use_stdout = false;
 	bool use_splitter = false;
 	bool use_lch = false;
+	char *host_to = NULL;
+	int port_to = 1234;
+	int port_http = 12345;
+	sock_data *sockdata = NULL;
 	int dev_num = 0;
 	int val;
 	char *voltage[] = {"0V", "11V", "15V"};
 	char *sid_list = NULL;
 	unsigned int tsid = 0;
-	char *pch = NULL;
+	int connected_socket, listening_socket;
+	unsigned int len;
+	char *channel, *pch = NULL;
 
-	while((result = getopt_long(argc, argv, "br:smn:p:d:hvit:c",
+	while((result = getopt_long(argc, argv, "br:smn:ua:H:p:d:hvitcl:",
 			long_options, &option_index)) != -1) {
-		switch(result) {
-		case 'b':
-			use_b25 = true;
+	switch(result) {
+	case 'b':
+		use_b25 = true;
 			fprintf(stderr, "using B25...\n");
 			break;
 		case 's':
@@ -278,6 +306,16 @@ int main(int argc, char **argv)
 		case 'm':
 			dopt.emm = true;
 			fprintf(stderr, "enable B25 emm processing\n");
+			break;
+		case 'u':
+			use_udp = true;
+			host_to = "localhost";
+			fprintf(stderr, "enable UDP broadcasting\n");
+			break;
+		case 'H':
+			use_http = true;
+			port_http = atoi(optarg);
+			fprintf(stderr, "creating a http daemon\n");
 			break;
 		case 'h':
 			fprintf(stderr, "\n");
@@ -312,6 +350,15 @@ int main(int argc, char **argv)
 			dopt.round = atoi(optarg);
 			fprintf(stderr, "set round %d\n", dopt.round);
 			break;
+		case 'a':
+			use_udp = true;
+			host_to = optarg;
+			fprintf(stderr, "UDP destination address: %s\n", host_to);
+			break;
+		case 'p':
+			port_to = atoi(optarg);
+			fprintf(stderr, "UDP port: %d\n", port_to);
+			break;
 		case 'd':
 			dev_num = atoi(optarg);
 			fprintf(stderr, "using device: /dev/dvb/adapter%d\n", dev_num);
@@ -329,31 +376,81 @@ int main(int argc, char **argv)
 			}
 			fprintf(stderr, "tsid = 0x%x\n", tsid);
 			break;
-		case 'c':
-			use_lch = true;
-			break;
+	case 'c':
+		use_lch = true;
+		break;
 		}
 	}
 
-	if(argc - optind < 3) {
-		fprintf(stderr, "Some required parameters are missing!\n");
-		fprintf(stderr, "Try '%s --help' for more information.\n", argv[0]);
+if(use_http){	// http-server add-
+	fprintf(stderr, "run as a daemon..\n");
+	if(daemon(1,1)){
+		perror("failed to start");
 		return 1;
+	}
+	fprintf(stderr, "pid = %d\n", getpid());
+
+	struct sockaddr_in sin;
+	int ret;
+	int sock_optval = 1;
+
+	listening_socket = socket(AF_INET, SOCK_STREAM, 0);
+	if ( listening_socket == -1 ){
+		perror("socket");
+		return 1;
+	}
+
+	if ( setsockopt(listening_socket, SOL_SOCKET, SO_REUSEADDR,
+			&sock_optval, sizeof(sock_optval)) == -1 ){
+		perror("setsockopt");
+		return 1;
+	}
+
+	sin.sin_family = AF_INET;
+	sin.sin_port = htons(port_http);
+	sin.sin_addr.s_addr = htonl(INADDR_ANY);
+
+
+	if ( bind(listening_socket, (struct sockaddr *)&sin, sizeof(sin)) < 0 ){
+		perror("bind");
+		return 1;
+	}
+
+	ret = listen(listening_socket, SOMAXCONN);
+	if ( ret == -1 ){
+		perror("listen");
+		return 1;
+	}
+	fprintf(stderr,"listening at port %d\n", port_http);
+	//set rectime to the infinite
+	if(parse_time("-",&tdata.recsec) != 0){
+		return 1;
+	}
+	if(tdata.recsec == -1)
+		tdata.indefinite = true;
+}else{	// -http-server add
+	if(argc - optind < 3) {
+		if(argc - optind == 2 && use_udp) {
+			fprintf(stderr, "Fileless UDP broadcasting\n");
+			fileless = true;
+			tdata.wfd = -1;
+		}
+		else {
+			fprintf(stderr, "Some required parameters are missing!\n");
+			fprintf(stderr, "Try '%s --help' for more information.\n", argv[0]);
+			return 1;
+		}
 	}
 
 	fprintf(stderr, "pid = %d\n", getpid());
 
-	if(use_lch) {
+	if(use_lch){
 		set_lch(argv[optind], &pch, &sid_list, &tsid);
 		if(sid_list) use_splitter = true;
 		fprintf(stderr, "tsid = 0x%x\n", tsid);
 	}
-
 	if(pch == NULL) pch = argv[optind];
-
-	if(!tsid) {
-		set_bs_tsid(pch, &tsid);
-	}
+	if(!tsid) set_bs_tsid(pch, &tsid);
 
 	/* tune */
 	if(tune(pch, &tdata, dev_num, tsid) != 0)
@@ -371,22 +468,26 @@ int main(int argc, char **argv)
 	if(destfile && !strcmp("-", destfile)) {
 		use_stdout = true;
 		tdata.wfd = 1; /* stdout */
-	} else {
-		int status;
-		char *path = strdup(argv[optind + 2]);
-		char *dir = dirname(path);
-		status = mkpath(dir, 0777);
-		if(status == -1)
-			perror("mkpath");
-		free(path);
+	}
+	else {
+		if(!fileless) {
+			int status;
+			char *path = strdup(argv[optind + 2]);
+			char *dir = dirname(path);
+			status = mkpath(dir, 0777);
+			if(status == -1)
+				perror("mkpath");
+			free(path);
 
-		tdata.wfd = open(argv[optind + 2], (O_RDWR | O_CREAT | O_TRUNC), 0666);
-		if(tdata.wfd < 0) {
-			fprintf(stderr, "Cannot open output file: %s\n",
-					argv[optind + 2]);
-			return 1;
+			tdata.wfd = open(argv[optind + 2], (O_RDWR | O_CREAT | O_TRUNC), 0666);
+			if(tdata.wfd < 0) {
+				fprintf(stderr, "Cannot open output file: %s\n",
+						argv[optind + 2]);
+				return 1;
+			}
 		}
 	}
+}	// http-server add
 
 	/* initialize decoder */
 	if(use_b25) {
@@ -398,6 +499,56 @@ int main(int argc, char **argv)
 		}
 	}
 
+while(1){	// http-server add-
+	if(use_http){
+		struct hostent *peer_host;
+		struct sockaddr_in peer_sin;
+		pch = NULL;
+		sid_list = NULL;
+
+		len = sizeof(peer_sin);
+
+		connected_socket = accept(listening_socket, (struct sockaddr *)&peer_sin, &len);
+		if ( connected_socket == -1 ){
+			perror("accept");
+			return 1;
+		}
+
+		peer_host = gethostbyaddr((char *)&peer_sin.sin_addr.s_addr,
+				  sizeof(peer_sin.sin_addr), AF_INET);
+		if ( peer_host == NULL ){
+			fprintf(stderr, "gethostbyname failed\n");
+			return 1;
+		}
+
+		fprintf(stderr,"connect from: %s [%s] port %d\n", peer_host->h_name, inet_ntoa(peer_sin.sin_addr), ntohs(peer_sin.sin_port));
+
+		char buf[256];
+		read_line(connected_socket, buf);
+		fprintf(stderr,"request command is %s\n",buf);
+		char s0[256],s1[256],s2[256];
+		sscanf(buf,"%s%s%s",s0,s1,s2);
+		char delim[] = "/";
+		channel = strtok(s1,delim);
+		char *sidflg = strtok(NULL,delim);
+		if(sidflg)
+			sid_list = sidflg;
+		if(use_lch)
+			set_lch(channel, &pch, &sid_list, &tsid);
+		if(pch == NULL) pch = channel;
+		fprintf(stderr,"channel is %s\n",channel);
+
+		if(sid_list == NULL){
+			use_splitter = false;
+			splitter = NULL;
+		}else if(!strcmp(sid_list,"all")){
+			use_splitter = false;
+			splitter = NULL;
+		}else{
+			use_splitter = true;
+		}
+	}	// -http-server add
+
 	/* initialize splitter */
 	if(use_splitter) {
 		splitter = split_startup(sid_list);
@@ -406,11 +557,54 @@ int main(int argc, char **argv)
 			return 1;
 		}
 	}
+
+	if(use_http){	// http-server add-
+		char header[] =  "HTTP/1.1 200 OK\r\nContent-Type: video/mpeg\r\nCache-Control: no-cache\r\n\r\n";
+		write(connected_socket, header, strlen(header));
+
+		//set write target to http
+		tdata.wfd = connected_socket;
+
+		//tune
+		if(tune(pch, &tdata, dev_num, tsid) != 0){
+			fprintf(stderr, "Tuner cannot start recording\n");
+			continue;
+		}
+	} else { // -http-server add
+	/* initialize udp connection */
+	if(use_udp) {
+	  sockdata = calloc(1, sizeof(sock_data));
+	  struct in_addr ia;
+	  ia.s_addr = inet_addr(host_to);
+	  if(ia.s_addr == INADDR_NONE) {
+			struct hostent *hoste = gethostbyname(host_to);
+			if(!hoste) {
+				perror("gethostbyname");
+				return 1;
+			}
+			ia.s_addr = *(in_addr_t*) (hoste->h_addr_list[0]);
+		}
+		if((sockdata->sfd = socket(PF_INET, SOCK_DGRAM, 0)) < 0) {
+			perror("socket");
+			return 1;
+		}
+
+		sockdata->addr.sin_family = AF_INET;
+		sockdata->addr.sin_port = htons (port_to);
+		sockdata->addr.sin_addr.s_addr = ia.s_addr;
+
+		if(connect(sockdata->sfd, (struct sockaddr *)&sockdata->addr,
+				   sizeof(sockdata->addr)) < 0) {
+			perror("connect");
+			return 1;
+		}
+	}
+	}	// http-server add
 	/* prepare thread data */
 	tdata.queue = p_queue;
 	tdata.decoder = decoder;
 	tdata.splitter = splitter;
-	tdata.sock_data = NULL;
+	tdata.sock_data = sockdata;
 	tdata.tune_persistent = false;
 
 	/* spawn signal handler thread */
@@ -432,69 +626,86 @@ int main(int argc, char **argv)
 
 	time(&tdata.start_time);
 
-	/* read from tuner */
-	while(1) {
-		if(f_exit)
-		break;
-		time(&cur_time);
-		bufptr = malloc(sizeof(BUFSZ));
-		if(!bufptr) {
-			f_exit = true;
+		/* read from tuner */
+		while(1) {
+			if(f_exit)
 			break;
-		}
-		bufptr->size = read(tdata.tfd, bufptr->buffer, MAX_READ_SIZE);
-		if(bufptr->size <= 0) {
+			time(&cur_time);
+			bufptr = malloc(sizeof(BUFSZ));
+			if(!bufptr) {
+				f_exit = true;
+				break;
+			}
+			bufptr->size = read(tdata.tfd, bufptr->buffer, MAX_READ_SIZE);
+			if(bufptr->size <= 0) {
+				if((cur_time - tdata.start_time) >= tdata.recsec &&
+				   !tdata.indefinite) {
+					f_exit = true;
+					enqueue(p_queue, NULL);
+					break;
+				} else {
+					free(bufptr);
+					continue;
+				}
+			}
+			enqueue(p_queue, bufptr);
+
+			/* stop recording */
+			time(&cur_time);
 			if((cur_time - tdata.start_time) >= tdata.recsec &&
 			   !tdata.indefinite) {
-				f_exit = true;
-				enqueue(p_queue, NULL);
 				break;
-			} else {
-				free(bufptr);
-				continue;
 			}
 		}
-		enqueue(p_queue, bufptr);
 
-		/* stop recording */
-		time(&cur_time);
-		if((cur_time - tdata.start_time) >= tdata.recsec &&
-		   !tdata.indefinite) {
-			break;
+		/* delete message queue*/
+		msgctl(tdata.msqid, IPC_RMID, NULL);
+
+		pthread_kill(signal_thread, SIGUSR1);
+
+		/* wait for threads */
+		pthread_join(reader_thread, NULL);
+		pthread_join(signal_thread, NULL);
+		pthread_join(ipc_thread, NULL);
+
+		/* close tuner */
+		close_tuner(&tdata);
+
+		/* release queue */
+		destroy_queue(p_queue);
+		if(use_http){	// http-server add-
+			//reset queue
+			p_queue = create_queue(MAX_QUEUE);
+
+			/* close http socket */
+			close(tdata.wfd);
+
+			fprintf(stderr,"connection closed. still listening at port %d\n",port_http);
+			f_exit = false;
+		}else{	// -http-server add
+
+			/* close output file */
+			if(!use_stdout){
+				fsync(tdata.wfd);
+				close(tdata.wfd);
+			}
+
+			/* free socket data */
+			if(use_udp) {
+				close(sockdata->sfd);
+				free(sockdata);
+			}
+			/* release decoder */
+			if(!use_http)
+				if(use_b25) {
+					b25_shutdown(decoder);
+				}
+			}	// http-server add
+		if(use_splitter) {
+			split_shutdown(splitter);
 		}
-	}
 
-	/* delete message queue*/
-	msgctl(tdata.msqid, IPC_RMID, NULL);
-
-	pthread_kill(signal_thread, SIGUSR1);
-
-	/* wait for threads */
-	pthread_join(reader_thread, NULL);
-	pthread_join(signal_thread, NULL);
-	pthread_join(ipc_thread, NULL);
-
-	/* close tuner */
-	close_tuner(&tdata);
-
-	/* release queue */
-	destroy_queue(p_queue);
-
-	/* close output file */
-	if(!use_stdout){
-		fsync(tdata.wfd);
-		close(tdata.wfd);
-	}
-
-	/* release decoder */
-	if(use_b25) {
-		b25_shutdown(decoder);
-	}
-
-	/* release splitter */
-	if(use_splitter) {
-		split_shutdown(splitter);
-	}
-
-	return 0;
+		if(!use_http)	// http-server add
+			return 0;
+	}	// http-server add
 }
