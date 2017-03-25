@@ -27,7 +27,7 @@ Maintain for pt3 with mirakurun.
 ## Requirement
 
 - dvb drivers
-- gcc
+- gcc / clang
 
 ## how to install
 
