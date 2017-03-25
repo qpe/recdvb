@@ -34,29 +34,6 @@
 /* globals */
 extern bool f_exit;
 
-//read 1st line from socket
-void read_line(int socket, char *p)
-{
-	int i;
-	for (i=0; i < 255; i++) {
-		int ret;
-		ret = read(socket, p, 1);
-		if ( ret == -1 ){
-			perror("read");
-			exit(1);
-		} else if( ret == 0 ) {
-			break;
-		}
-		if (*p == '\n') {
-			p++;
-			break;
-		}
-		p++;
-	}
-	*p = '\0';
-}
-
-
 /* will be ipc message receive thread */
 void * mq_recv(void *t)
 {
@@ -79,8 +56,6 @@ void * mq_recv(void *t)
 		while(tdata->queue->num_used > 0) {
 			usleep(10000);
 		}
-//		if(close_tuner(tdata) != 0)
-//		return NULL;
 
 		tune(channel, tdata, 0, tsid);
 
@@ -144,9 +119,6 @@ static void show_options(void)
 
 void cleanup(thread_data *tdata)
 {
-	/* stop recording */
-//	ioctl(tdata->tfd, STOP_REC, 0);
-
 	f_exit = true;
 
 	pthread_cond_signal(&tdata->queue->cond_avail);
@@ -434,8 +406,8 @@ int main(int argc, char **argv)
 
 	/* read from tuner */
 	while(1) {
-		if(f_exit)
-		break;
+		if(f_exit) break;
+
 		time(&cur_time);
 		bufptr = malloc(sizeof(BUFSZ));
 		if(!bufptr) {
