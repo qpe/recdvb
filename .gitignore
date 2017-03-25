@@ -1,0 +1,18 @@
+# obj
+*.o
+
+# automake
+/autom4te.cache
+/Makefile
+/version.h
+/config.h
+/config.h.in
+/config.log
+/config.status
+/configure
+/.deps
+
+# binary
+/recdvb
+/recdvbctl
+/recdvbchksig
