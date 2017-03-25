@@ -15,7 +15,8 @@
 
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
-#pragma once
+#ifndef RECDVB_TSSPLITTER_LITE_H
+#define RECDVB_TSSPLITTER_LITE_H
 
 #include <stdint.h>
 
@@ -69,3 +70,4 @@ int split_select(splitter *sp, ARIB_STD_B25_BUFFER *sbuf);
 void split_shutdown(splitter *sp);
 int split_ts(splitter *splitter, ARIB_STD_B25_BUFFER *sbuf, splitbuf_t *dbuf);
 
+#endif

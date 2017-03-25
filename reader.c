@@ -1,4 +1,19 @@
-
+/*
+ * recdvb - record tool for linux DVB driver.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -28,12 +43,8 @@ void *reader_func(void *p)
 	splitter *splitter = tdata->splitter;
 	int wfd = tdata->wfd;
 	bool use_b25 = dec ? true : false;
-	bool use_udp = tdata->sock_data ? true : false;
-	bool fileless = false;
 	bool use_splitter = splitter ? true : false;
-	int sfd = -1;
 	pthread_t signal_thread = tdata->signal_thread;
-//	struct sockaddr_in *addr = NULL;
 	BUFSZ *qbuf;
 	static splitbuf_t splitbuf;
 	ARIB_STD_B25_BUFFER sbuf, dbuf, buf;
@@ -46,12 +57,7 @@ void *reader_func(void *p)
 	splitbuf.buffer = NULL;
 
 	if(wfd == -1)
-		fileless = true;
-
-	if(use_udp) {
-		sfd = tdata->sock_data->sfd;
-//		addr = &tdata->sock_data->addr;
-	}
+		return NULL;
 
 	while(1) {
 		ssize_t wc = 0;
@@ -135,42 +141,23 @@ void *reader_func(void *p)
 		} /* if */
 
 
-		if(!fileless) {
-			/* write data to output file */
-			int size_remain = buf.size;
-			int offset = 0;
+		/* write data to output file */
+		int size_remain = buf.size;
+		int offset = 0;
 
-			while(size_remain > 0) {
-				int ws = size_remain < SIZE_CHANK ? size_remain : SIZE_CHANK;
+		while(size_remain > 0) {
+			int ws = size_remain < SIZE_CHANK ? size_remain : SIZE_CHANK;
 
-				wc = write(wfd, buf.data + offset, ws);
-				if(wc < 0) {
-					perror("write");
-					file_err = 1;
-					pthread_kill(signal_thread,
-								 errno == EPIPE ? SIGPIPE : SIGUSR2);
-					break;
-				}
-				size_remain -= wc;
-				offset += wc;
+			wc = write(wfd, buf.data + offset, ws);
+			if(wc < 0) {
+				perror("write");
+				file_err = 1;
+				pthread_kill(signal_thread,
+					errno == EPIPE ? SIGPIPE : SIGUSR2);
+				break;
 			}
-		}
-
-		if(use_udp && sfd != -1) {
-			/* write data to socket */
-			int size_remain = buf.size;
-			int offset = 0;
-			while(size_remain > 0) {
-				int ws = size_remain < SIZE_CHANK ? size_remain : SIZE_CHANK;
-				wc = write(sfd, buf.data + offset, ws);
-				if(wc < 0) {
-					if(errno == EPIPE)
-						pthread_kill(signal_thread, SIGPIPE);
-					break;
-				}
-				size_remain -= wc;
-				offset += wc;
-			}
+			size_remain -= wc;
+			offset += wc;
 		}
 
 		free(qbuf);
@@ -205,21 +192,13 @@ void *reader_func(void *p)
 				buf.size = splitbuf.buffer_size;
 			}
 
-			if(!fileless && !file_err) {
+			if(!file_err) {
 				wc = write(wfd, buf.data, buf.size);
 				if(wc < 0) {
 					perror("write");
 					file_err = 1;
 					pthread_kill(signal_thread,
-								 errno == EPIPE ? SIGPIPE : SIGUSR2);
-				}
-			}
-
-			if(use_udp && sfd != -1) {
-				wc = write(sfd, buf.data, buf.size);
-				if(wc < 0) {
-					if(errno == EPIPE)
-						pthread_kill(signal_thread, SIGPIPE);
+						errno == EPIPE ? SIGPIPE : SIGUSR2);
 				}
 			}
 
