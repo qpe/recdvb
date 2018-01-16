@@ -21,8 +21,6 @@ Maintain for pt3 with mirakurun.
 
 ```
  $ recdvb --help
- $ recdvbchksig --help
- $ recdvbctl --help
 ```
 
 - sample `mirakurun config tuners`
@@ -60,7 +58,7 @@ Maintain for pt3 with mirakurun.
 
 ## Tested environment
 
-- Device: PT3(with kernel 4.9.6 earth_pt3 driver)
+- Device: PT3 (with kernel 4.9.6 earth_pt3 driver)
 - Software: Mirakurun
 
 
