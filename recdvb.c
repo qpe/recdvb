@@ -112,9 +112,7 @@ static const struct option long_options[] = {
 	{ "dev",       1, NULL, 'd'},
 	{ "help",      0, NULL, 'h'},
 	{ "version",   0, NULL, 'v'},
-	{ "sid",       1, NULL, 'i'},
 	{ "tsid",      1, NULL, 't'},
-	{ "lch",       0, NULL, 'c'},
 	{ 0,           0, NULL,  0 } /* terminate */
 };
 
@@ -128,10 +126,7 @@ static const char options_desc[] =
 #endif
 "  -d, --dev N:             Use DVB device /dev/dvb/adapterN\n"
 "  -n, --lnb voltage:       Specify LNB voltage (0, 11, 15)\n"
-"  -i, --sid SID1,SID2,...: Specify SID number in CSV format (101,102,...)\n"
 "  -t, --tsid TSID:         Specify TSID in decimal or hex, hex begins '0x'\n"
-"  -c, --lch:               Specify channel as BS/CS logical channel\n"
-"                           instead of physical one\n"
 "  -h, --help:              Show this help\n"
 "  -v, --version:           Show version\n";
 
@@ -143,9 +138,7 @@ static void show_usage(char *cmd)
 #endif
 		"[--dev devicenumber] "
 		"[--lnb voltage] "
-		"[--sid SID1,SID2] "
 		"[--tsid TSID] "
-		"[--lch] "
 		"channel rectime destfile\n", cmd);
 	fprintf(stderr, "\n");
 	fprintf(stderr, "Remarks:\n");
@@ -235,7 +228,6 @@ int main(int argc, char **argv)
 	QUEUE_T *p_queue = create_queue(MAX_QUEUE);
 	BUFSZ   *bufptr;
 	decoder *decoder = NULL;
-	splitter *splitter = NULL;
 	static thread_data tdata;
 	decoder_options dopt = {
 		4,  /* round */
@@ -252,12 +244,9 @@ int main(int argc, char **argv)
 
 	bool use_b25 = false;
 	bool use_stdout = false;
-	bool use_splitter = false;
-	bool use_lch = false;
 	int dev_num = 0;
 	int val;
 	char *voltage[] = {"0V", "11V", "15V"};
-	char *sid_list = NULL;
 	unsigned int tsid = 0;
 	char *pch = NULL;
 
@@ -311,10 +300,6 @@ int main(int argc, char **argv)
 			dev_num = atoi(optarg);
 			fprintf(stderr, "using device: /dev/dvb/adapter%d\n", dev_num);
 			break;
-		case 'i':
-			use_splitter = true;
-			sid_list = optarg;
-			break;
 		case 't':
 			tsid = (unsigned int)atoi(optarg);
 			if(strlen(optarg) > 2){
@@ -323,9 +308,6 @@ int main(int argc, char **argv)
 				}
 			}
 			fprintf(stderr, "tsid = 0x%x\n", tsid);
-			break;
-		case 'c':
-			use_lch = true;
 			break;
 		}
 	}
@@ -337,12 +319,6 @@ int main(int argc, char **argv)
 	}
 
 	fprintf(stderr, "pid = %d\n", getpid());
-
-	if(use_lch) {
-		set_lch(argv[optind], &pch, &sid_list, &tsid);
-		if(sid_list) use_splitter = true;
-		fprintf(stderr, "tsid = 0x%x\n", tsid);
-	}
 
 	if(pch == NULL) pch = argv[optind];
 
@@ -393,18 +369,9 @@ int main(int argc, char **argv)
 		}
 	}
 
-	/* initialize splitter */
-	if(use_splitter) {
-		splitter = split_startup(sid_list);
-		if(splitter->sid_list == NULL) {
-			fprintf(stderr, "Cannot start TS splitter\n");
-			return 1;
-		}
-	}
 	/* prepare thread data */
 	tdata.queue = p_queue;
 	tdata.decoder = decoder;
-	tdata.splitter = splitter;
 	tdata.sock_data = NULL;
 	tdata.tune_persistent = false;
 
@@ -484,11 +451,6 @@ int main(int argc, char **argv)
 	/* release decoder */
 	if(use_b25) {
 		b25_shutdown(decoder);
-	}
-
-	/* release splitter */
-	if(use_splitter) {
-		split_shutdown(splitter);
 	}
 
 	return 0;

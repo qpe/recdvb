@@ -15,7 +15,7 @@ endif
 LIBS     = @LIBS@
 LDFLAGS  =
 
-OBJS  = recdvb.o decoder.o mkpath.o time.o tssplitter_lite.o recdvbcore.o queue.o reader.o preset.o
+OBJS  = recdvb.o decoder.o mkpath.o time.o recdvbcore.o queue.o reader.o preset.o
 DEPEND = .deps
 
 all: $(TARGET)

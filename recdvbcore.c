@@ -93,7 +93,7 @@ void calc_cn(void)
 		props.props = prop;
 		props.num = 1;
 		if (ioctl(fefd, FE_GET_PROPERTY, &props) >= 0) {
-			fprintf(stderr, "SNR(FE_GET_PROPERTY): %d\n", prop[0].u.st.stat[0].uvalue);
+			fprintf(stderr, "SNR(FE_GET_PROPERTY): %llu\n", prop[0].u.st.stat[0].uvalue);
 			return;
 		}
 	}

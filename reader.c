@@ -25,7 +25,6 @@
 
 #include "queue.h"
 #include "recdvbcore.h"
-#include "tssplitter_lite.h"
 
 #include "reader.h"
 
@@ -40,21 +39,15 @@ void *reader_func(void *p)
 	thread_data *tdata = (thread_data *)p;
 	QUEUE_T *p_queue = tdata->queue;
 	decoder *dec = tdata->decoder;
-	splitter *splitter = tdata->splitter;
 	int wfd = tdata->wfd;
 	bool use_b25 = dec ? true : false;
-	bool use_splitter = splitter ? true : false;
 	pthread_t signal_thread = tdata->signal_thread;
 	BUFSZ *qbuf;
-	static splitbuf_t splitbuf;
 	ARIB_STD_B25_BUFFER sbuf, dbuf, buf;
 	int code;
-	int split_select_finish = TSS_ERROR;
 
 	buf.size = 0;
 	buf.data = NULL;
-	splitbuf.buffer_size = 0;
-	splitbuf.buffer = NULL;
 
 	if(wfd == -1)
 		return NULL;
@@ -83,63 +76,6 @@ void *reader_func(void *p)
 			else
 				buf = dbuf;
 		}
-
-		if(use_splitter) {
-			splitbuf.buffer_filled = 0;
-
-			/* allocate split buffer */
-			if(splitbuf.buffer_size < buf.size && buf.size > 0) {
-				splitbuf.buffer = realloc(splitbuf.buffer, (size_t)buf.size);
-				if(splitbuf.buffer == NULL) {
-					fprintf(stderr, "split buffer allocation failed\n");
-					use_splitter = false;
-					goto fin;
-				}
-			}
-
-			while(buf.size) {
-				/* 分離対象PIDの抽出 */
-				if(split_select_finish != TSS_SUCCESS) {
-					split_select_finish = split_select(splitter, &buf);
-					if(split_select_finish == TSS_NULL) {
-						/* mallocエラー発生 */
-						fprintf(stderr, "split_select malloc failed\n");
-						use_splitter = false;
-						goto fin;
-					}
-					else if(split_select_finish != TSS_SUCCESS) {
-						/* 分離対象PIDが完全に抽出できるまで出力しない
-						 * 1秒程度余裕を見るといいかも
-						 */
-						time_t cur_time;
-						time(&cur_time);
-						if(cur_time - tdata->start_time > 4) {
-							use_splitter = false;
-							goto fin;
-						}
-						break;
-					}
-				}
-
-				/* 分離対象以外をふるい落とす */
-				code = split_ts(splitter, &buf, &splitbuf);
-				if(code == TSS_NULL) {
-					fprintf(stderr, "PMT reading..\n");
-				}
-				else if(code != TSS_SUCCESS) {
-					fprintf(stderr, "split_ts failed\n");
-					break;
-				}
-
-				break;
-			} /* while */
-
-			buf.size = splitbuf.buffer_filled;
-			buf.data = splitbuf.buffer;
-		fin:
-			;
-		} /* if */
-
 
 		/* write data to output file */
 		int size_remain = buf.size;
@@ -176,22 +112,6 @@ void *reader_func(void *p)
 					buf = dbuf;
 			}
 
-			if(use_splitter) {
-				/* 分離対象以外をふるい落とす */
-				code = split_ts(splitter, &buf, &splitbuf);
-				if(code == TSS_NULL) {
-					split_select_finish = TSS_ERROR;
-					fprintf(stderr, "PMT reading..\n");
-				}
-				else if(code != TSS_SUCCESS) {
-					fprintf(stderr, "split_ts failed\n");
-					break;
-				}
-
-				buf.data = splitbuf.buffer;
-				buf.size = splitbuf.buffer_size;
-			}
-
 			if(!file_err) {
 				wc = write(wfd, buf.data, (size_t)buf.size);
 				if(wc < 0) {
@@ -200,12 +120,6 @@ void *reader_func(void *p)
 					pthread_kill(signal_thread,
 						errno == EPIPE ? SIGPIPE : SIGUSR2);
 				}
-			}
-
-			if(use_splitter) {
-				free(splitbuf.buffer);
-				splitbuf.buffer = NULL;
-				splitbuf.buffer_size = 0;
 			}
 
 			break;

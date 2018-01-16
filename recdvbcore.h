@@ -24,7 +24,6 @@
 
 #include "decoder.h"
 #include "queue.h"
-#include "tssplitter_lite.h"
 
 /* ipc message size */
 #define MSGSZ		255
@@ -58,7 +57,6 @@ typedef struct thread_data {
 	pthread_t signal_thread;         //invariable
 	decoder *decoder;                //invariable
 	decoder_options *dopt;           //invariable
-	splitter *splitter;              //invariable
 } thread_data;
 
 /* prototypes */
