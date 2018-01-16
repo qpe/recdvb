@@ -81,9 +81,28 @@ void close_tuner(thread_data *tdata)
 
 void calc_cn(void)
 {
-	  int strength = 0;
-	  ioctl(fefd, FE_READ_SNR, &strength);
-	  fprintf(stderr, "SNR: %d\n", strength);
+	int rc;
+	if(ioctl(fefd, FE_READ_SIGNAL_STRENGTH, &rc) >= 0) {
+		fprintf(stderr, "STRENGTH: %d\n", rc);
+		return;
+	}
+	{
+		struct dtv_property prop[1];
+		struct dtv_properties props;
+		prop[0].cmd = DTV_STAT_SIGNAL_STRENGTH;
+		props.props = prop;
+		props.num = 1;
+		if (ioctl(fefd, FE_GET_PROPERTY, &props) >= 0) {
+			fprintf(stderr, "SNR(FE_GET_PROPERTY): %d\n", prop[0].u.st.stat[0].uvalue);
+			return;
+		}
+	}
+	int strength = 0;
+	if(ioctl(fefd, FE_READ_SNR, &strength) < 0) {
+		fprintf(stderr, "calc_cn failed.\n");
+	} else {
+		fprintf(stderr, "SNR: %d\n", strength);
+	}
 }
 
 /*

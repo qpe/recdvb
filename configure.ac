@@ -16,7 +16,6 @@ AC_ARG_ENABLE(b25,
 )
 
 # Checks for libraries.
-AC_CHECK_LIB([m], [log10])
 AC_CHECK_LIB([pthread], [pthread_kill])
 
 AC_CONFIG_FILES([Makefile])
