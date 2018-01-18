@@ -30,19 +30,6 @@ typedef struct decoder {
 	B_CAS_CARD *bcas;
 } decoder;
 
-#else
-
-typedef struct {
-	uint8_t *data;
-	int32_t  size;
-} ARIB_STD_B25_BUFFER;
-
-typedef struct decoder {
-	void *dummy;
-} decoder;
-
-#endif
-
 typedef struct decoder_options {
 	int round;
 	int strip;
@@ -57,5 +44,14 @@ int b25_decode(decoder *dec,
 		ARIB_STD_B25_BUFFER *dbuf);
 int b25_finish(decoder *dec,
 		ARIB_STD_B25_BUFFER *dbuf);
+
+#else
+
+typedef struct {
+	uint8_t *data;
+	int32_t  size;
+} ARIB_STD_B25_BUFFER;
+
+#endif
 
 #endif

@@ -123,30 +123,4 @@ int b25_finish(decoder *dec, ARIB_STD_B25_BUFFER *dbuf)
 	return code;
 }
 
-#else
-
-/* functions */
-decoder *b25_startup(decoder_options *opt)
-{
-	return NULL;
-}
-
-int b25_shutdown(decoder *dec)
-{
-	return 0;
-}
-
-int b25_decode(decoder *dec,
-		ARIB_STD_B25_BUFFER *sbuf,
-		ARIB_STD_B25_BUFFER *dbuf)
-{
-	return 0;
-}
-
-int b25_finish(decoder *dec,
-		ARIB_STD_B25_BUFFER *dbuf)
-{
-	return 0;
-}
-
 #endif

@@ -227,22 +227,22 @@ int main(int argc, char **argv)
 	pthread_t ipc_thread;
 	QUEUE_T *p_queue = create_queue(MAX_QUEUE);
 	BUFSZ   *bufptr;
-	decoder *decoder = NULL;
 	static thread_data tdata;
-	decoder_options dopt = {
-		4,  /* round */
-		0,  /* strip */
-		0   /* emm */
-	};
-	tdata.dopt = &dopt;
 	tdata.lnb = 0;
 	tdata.tfd = -1;
 
 	int result;
 	int option_index;
 
-
+#ifdef HAVE_LIBARIB25
+	decoder *decoder = NULL;
 	bool use_b25 = false;
+	decoder_options dopt = {
+		4,  /* round */
+		0,  /* strip */
+		0   /* emm */
+	};
+#endif
 	bool use_stdout = false;
 	int dev_num = 0;
 	int val;
@@ -253,6 +253,7 @@ int main(int argc, char **argv)
 	while((result = getopt_long(argc, argv, short_options,
 			long_options, &option_index)) != -1) {
 		switch(result) {
+#ifdef HAVE_LIBARIB25
 		case 'b':
 			use_b25 = true;
 			fprintf(stderr, "using B25...\n");
@@ -265,6 +266,11 @@ int main(int argc, char **argv)
 			dopt.emm = true;
 			fprintf(stderr, "enable B25 emm processing\n");
 			break;
+		case 'r':
+			dopt.round = atoi(optarg);
+			fprintf(stderr, "set round %d\n", dopt.round);
+			break;
+#endif
 		case 'h':
 			fprintf(stderr, "\n");
 			show_usage(argv[0]);
@@ -291,10 +297,6 @@ int main(int argc, char **argv)
 				break;
 			}
 			fprintf(stderr, "LNB = %s\n", voltage[tdata.lnb]);
-			break;
-		case 'r':
-			dopt.round = atoi(optarg);
-			fprintf(stderr, "set round %d\n", dopt.round);
 			break;
 		case 'd':
 			dev_num = atoi(optarg);
@@ -359,6 +361,7 @@ int main(int argc, char **argv)
 		}
 	}
 
+#ifdef HAVE_LIBARIB25
 	/* initialize decoder */
 	if(use_b25) {
 		decoder = b25_startup(&dopt);
@@ -368,10 +371,13 @@ int main(int argc, char **argv)
 			use_b25 = false;
 		}
 	}
+#endif
 
 	/* prepare thread data */
 	tdata.queue = p_queue;
+#ifdef HAVE_LIBARIB25
 	tdata.decoder = decoder;
+#endif
 	tdata.sock_data = NULL;
 	tdata.tune_persistent = false;
 
@@ -448,10 +454,12 @@ int main(int argc, char **argv)
 		close(tdata.wfd);
 	}
 
+#ifdef HAVE_LIBARIB25
 	/* release decoder */
 	if(use_b25) {
 		b25_shutdown(decoder);
 	}
+#endif
 
 	return 0;
 }

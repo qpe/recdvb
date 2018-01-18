@@ -55,8 +55,9 @@ typedef struct thread_data {
 	QUEUE_T *queue;                  //invariable
 	sock_data *sock_data;            //invariable
 	pthread_t signal_thread;         //invariable
+#ifdef HAVE_LIBARIB25
 	decoder *decoder;                //invariable
-	decoder_options *dopt;           //invariable
+#endif
 } thread_data;
 
 /* prototypes */

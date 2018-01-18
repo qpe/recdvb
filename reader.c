@@ -38,13 +38,16 @@ void *reader_func(void *p)
 {
 	thread_data *tdata = (thread_data *)p;
 	QUEUE_T *p_queue = tdata->queue;
-	decoder *dec = tdata->decoder;
 	int wfd = tdata->wfd;
+#ifdef HAVE_LIBARIB25
+	int code;
+	decoder *dec = tdata->decoder;
 	bool use_b25 = dec ? true : false;
+	ARIB_STD_B25_BUFFER dbuf;
+#endif
 	pthread_t signal_thread = tdata->signal_thread;
 	BUFSZ *qbuf;
-	ARIB_STD_B25_BUFFER sbuf, dbuf, buf;
-	int code;
+	ARIB_STD_B25_BUFFER sbuf, buf;
 
 	buf.size = 0;
 	buf.data = NULL;
@@ -65,7 +68,7 @@ void *reader_func(void *p)
 		sbuf.size = (int32_t)qbuf->size;
 
 		buf = sbuf; /* default */
-
+#ifdef HAVE_LIBARIB25
 		if(use_b25) {
 			code = b25_decode(dec, &sbuf, &dbuf);
 			if(code < 0) {
@@ -76,6 +79,7 @@ void *reader_func(void *p)
 			else
 				buf = dbuf;
 		}
+#endif
 
 		/* write data to output file */
 		int size_remain = buf.size;
@@ -104,6 +108,7 @@ void *reader_func(void *p)
 
 			buf = sbuf; /* default */
 
+#ifdef HAVE_LIBARIB25
 			if(use_b25) {
 				code = b25_finish(dec, &dbuf);
 				if(code < 0)
@@ -111,6 +116,7 @@ void *reader_func(void *p)
 				else
 					buf = dbuf;
 			}
+#endif
 
 			if(!file_err) {
 				wc = write(wfd, buf.data, (size_t)buf.size);
