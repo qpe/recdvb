@@ -39,6 +39,18 @@ Maintain for pt3 with mirakurun.
     isDisabled: false
 ```
 
+- sample `mirakurun config channels`
+```
+- name: NHK G
+  type: GR
+  channel: '27'
+
+- name: NHK BS1
+  type: BS
+  channel: BS15_0
+  serviceId: 101
+```
+
 
 ## Requirement
 
