@@ -132,7 +132,7 @@ static void * process_signals(void *t)
 
 	sigwait(&waitset, &sig);
 
-	switch(sig) {
+	switch (sig) {
 	case SIGPIPE:
 		fprintf(stderr, "\nSIGPIPE received. cleaning up...\n");
 		cleanup(tdata);
@@ -168,8 +168,9 @@ static void init_signal_handlers(pthread_t *signal_thread, thread_data *tdata)
 	sigaddset(&blockset, SIGUSR1);
 	sigaddset(&blockset, SIGUSR2);
 
-	if(pthread_sigmask(SIG_BLOCK, &blockset, NULL))
+	if (pthread_sigmask(SIG_BLOCK, &blockset, NULL)) {
 		fprintf(stderr, "pthread_sigmask() failed.\n");
+	}
 
 	pthread_create(signal_thread, NULL, process_signals, tdata);
 }
@@ -204,9 +205,8 @@ int main(int argc, char **argv)
 	unsigned int tsid = 0;
 	char *pch = NULL;
 
-	while((result = getopt_long(argc, argv, short_options,
-			long_options, &option_index)) != -1) {
-		switch(result) {
+	while ((result = getopt_long(argc, argv, short_options, long_options, &option_index)) != -1) {
+		switch (result) {
 #ifdef HAVE_LIBARIB25
 		case 'b':
 			use_b25 = true;
@@ -239,7 +239,7 @@ int main(int argc, char **argv)
 		/* following options require argument */
 		case 'n':
 			val = atoi(optarg);
-			switch(val) {
+			switch (val) {
 			case 11:
 				tdata.lnb = 1;
 				break;
@@ -258,8 +258,8 @@ int main(int argc, char **argv)
 			break;
 		case 't':
 			tsid = (unsigned int)atoi(optarg);
-			if(strlen(optarg) > 2){
-				if((optarg[0] == '0') && ((optarg[1] == 'X') ||(optarg[1] == 'x'))){
+			if (strlen(optarg) > 2) {
+				if ((optarg[0] == '0') && ((optarg[1] == 'X') ||(optarg[1] == 'x'))) {
 					sscanf(optarg+2, "%x", &tsid);
 				}
 			}
@@ -268,7 +268,7 @@ int main(int argc, char **argv)
 		}
 	}
 
-	if(argc - optind < 3) {
+	if (argc - optind < 3) {
 		fprintf(stderr, "Some required parameters are missing!\n");
 		fprintf(stderr, "Try '%s --help' for more information.\n", argv[0]);
 		return 1;
@@ -276,26 +276,26 @@ int main(int argc, char **argv)
 
 	fprintf(stderr, "pid = %d\n", getpid());
 
-	if(pch == NULL) pch = argv[optind];
+	if (pch == NULL) pch = argv[optind];
 
-	if(!tsid) {
+	if (!tsid) {
 		set_bs_tsid(pch, &tsid);
 	}
 
 	/* tune */
-	if(tune(pch, &tdata, dev_num, tsid) != 0)
+	if (tune(pch, &tdata, dev_num, tsid) != 0)
 		return 1;
 
 	/* set recsec */
-	if(parse_time(argv[optind + 1], &tdata.recsec) != 0) // no other thread --yaz
+	if (parse_time(argv[optind + 1], &tdata.recsec) != 0) // no other thread --yaz
 		return 1;
 
-	if(tdata.recsec == -1)
+	if (tdata.recsec == -1)
 		tdata.indefinite = true;
 
 	/* open output file */
 	char *destfile = argv[optind + 2];
-	if(destfile && !strcmp("-", destfile)) {
+	if (destfile && !strcmp("-", destfile)) {
 		use_stdout = true;
 		tdata.wfd = 1; /* stdout */
 	} else {
@@ -303,23 +303,22 @@ int main(int argc, char **argv)
 		char *path = strdup(argv[optind + 2]);
 		char *dir = dirname(path);
 		status = mkpath(dir, 0777);
-		if(status == -1)
+		if (status == -1)
 			perror("mkpath");
 		free(path);
 
 		tdata.wfd = open(argv[optind + 2], (O_RDWR | O_CREAT | O_TRUNC), 0666);
-		if(tdata.wfd < 0) {
-			fprintf(stderr, "Cannot open output file: %s\n",
-					argv[optind + 2]);
+		if (tdata.wfd < 0) {
+			fprintf(stderr, "Cannot open output file: %s\n", argv[optind + 2]);
 			return 1;
 		}
 	}
 
 #ifdef HAVE_LIBARIB25
 	/* initialize decoder */
-	if(use_b25) {
+	if (use_b25) {
 		decoder = b25_startup(&dopt);
-		if(!decoder) {
+		if (!decoder) {
 			fprintf(stderr, "Cannot start b25 decoder\n");
 			fprintf(stderr, "Fall back to encrypted recording\n");
 			use_b25 = false;
@@ -347,19 +346,18 @@ int main(int argc, char **argv)
 	time(&tdata.start_time);
 
 	/* read from tuner */
-	while(1) {
-		if(f_exit) break;
+	while (1) {
+		if (f_exit) break;
 
 		time(&cur_time);
 		bufptr = malloc(sizeof(BUFSZ));
-		if(!bufptr) {
+		if (!bufptr) {
 			f_exit = true;
 			break;
 		}
 		bufptr->size = read(tdata.tfd, bufptr->buffer, MAX_READ_SIZE);
-		if(bufptr->size <= 0) {
-			if((cur_time - tdata.start_time) >= tdata.recsec &&
-			   !tdata.indefinite) {
+		if (bufptr->size <= 0) {
+			if ((cur_time - tdata.start_time) >= tdata.recsec && !tdata.indefinite) {
 				f_exit = true;
 				enqueue(p_queue, NULL);
 				break;
@@ -372,8 +370,7 @@ int main(int argc, char **argv)
 
 		/* stop recording */
 		time(&cur_time);
-		if((cur_time - tdata.start_time) >= tdata.recsec &&
-		   !tdata.indefinite) {
+		if ((cur_time - tdata.start_time) >= tdata.recsec && !tdata.indefinite) {
 			break;
 		}
 	}
@@ -391,14 +388,14 @@ int main(int argc, char **argv)
 	destroy_queue(p_queue);
 
 	/* close output file */
-	if(!use_stdout){
+	if (!use_stdout) {
 		fsync(tdata.wfd);
 		close(tdata.wfd);
 	}
 
 #ifdef HAVE_LIBARIB25
 	/* release decoder */
-	if(use_b25) {
+	if (use_b25) {
 		b25_shutdown(decoder);
 	}
 #endif
