@@ -48,51 +48,6 @@
 /* globals */
 extern bool f_exit;
 
-/* will be ipc message receive thread */
-static void * mq_recv(void *t)
-{
-	thread_data *tdata = (thread_data *)t;
-	message_buf rbuf;
-	char channel[16];
-	char service_id[32] = {0};
-	int recsec = 0, time_to_add = 0;
-	unsigned int tsid = 0;
-
-	while(1) {
-		if(msgrcv(tdata->msqid, &rbuf, sizeof(rbuf.mtext), 1, 0) < 0) {
-			return NULL;
-		}
-
-		sscanf(rbuf.mtext, "ch=%s t=%d e=%d sid=%s tsid=%d",
-		       channel, &recsec, &time_to_add, service_id, &tsid);
-
-		/* wait for remainder */
-		while(tdata->queue->num_used > 0) {
-			usleep(10000);
-		}
-
-		tune(channel, tdata, 0, tsid);
-
-		if(time_to_add) {
-			tdata->recsec += time_to_add;
-			fprintf(stderr, "Extended %d sec\n", time_to_add);
-		}
-
-		if(recsec) {
-			time_t cur_time;
-			time(&cur_time);
-			if(cur_time - tdata->start_time > recsec) {
-				f_exit = true;
-			} else {
-				tdata->recsec = recsec;
-				fprintf(stderr, "Total recording time = %d sec\n", recsec);
-			}
-		}
-
-		if(f_exit) return NULL;
-	}
-}
-
 /*
  * for options
  */
@@ -224,7 +179,6 @@ int main(int argc, char **argv)
 	time_t cur_time;
 	pthread_t signal_thread;
 	pthread_t reader_thread;
-	pthread_t ipc_thread;
 	QUEUE_T *p_queue = create_queue(MAX_QUEUE);
 	BUFSZ   *bufptr;
 	static thread_data tdata;
@@ -388,14 +342,6 @@ int main(int argc, char **argv)
 	tdata.signal_thread = signal_thread;
 	pthread_create(&reader_thread, NULL, reader_func, &tdata);
 
-	/* spawn ipc thread */
-	key_t key;
-	key = (key_t)getpid();
-
-	if ((tdata.msqid = msgget(key, IPC_CREAT | 0666)) < 0) {
-		perror("msgget");
-	}
-	pthread_create(&ipc_thread, NULL, mq_recv, &tdata);
 	fprintf(stderr, "\nRecording...\n");
 
 	time(&tdata.start_time);
@@ -432,15 +378,11 @@ int main(int argc, char **argv)
 		}
 	}
 
-	/* delete message queue*/
-	msgctl(tdata.msqid, IPC_RMID, NULL);
-
 	pthread_kill(signal_thread, SIGUSR1);
 
 	/* wait for threads */
 	pthread_join(reader_thread, NULL);
 	pthread_join(signal_thread, NULL);
-	pthread_join(ipc_thread, NULL);
 
 	/* close tuner */
 	close_tuner(&tdata);
@@ -463,3 +405,4 @@ int main(int argc, char **argv)
 
 	return 0;
 }
+
