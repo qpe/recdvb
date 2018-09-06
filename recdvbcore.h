@@ -24,15 +24,7 @@
 #include "decoder.h"
 #include "queue.h"
 
-/* ipc message size */
-#define MSGSZ		255
-
 /* type definitions */
-typedef struct message_buf {
-	long mtype;
-	char mtext[MSGSZ + 1];
-} message_buf;
-
 typedef struct thread_data {
 	int tfd;    /* tuner fd */       //xxx variable
 
