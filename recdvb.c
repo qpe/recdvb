@@ -14,26 +14,16 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-#include <errno.h>
-#include <math.h>
 #include <stdio.h>
-#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 #include <signal.h>
-#include <time.h>
 
-#include <ctype.h>
 #include <fcntl.h>
 #include <getopt.h>
 #include <libgen.h>
 #include <pthread.h>
 #include <unistd.h>
-
-#include <sys/ioctl.h>
-#include <sys/ipc.h>
-#include <sys/msg.h>
-#include <sys/types.h>
 
 #include "recdvbcore.h"
 #include "mkpath.h"

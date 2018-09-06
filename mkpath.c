@@ -3,10 +3,10 @@
  * copyright: (C) JLSS 1990-91,1997-98,2001,2005,2008
  */
 
-#include <sys/stat.h>
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <sys/stat.h>
 
 #include "mkpath.h"
 

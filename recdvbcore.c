@@ -14,15 +14,12 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>
 
 #include <sys/poll.h>
 #include <sys/ioctl.h>
-#include <sys/types.h>
-#include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
 
