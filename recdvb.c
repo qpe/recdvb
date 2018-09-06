@@ -321,7 +321,6 @@ int main(int argc, char **argv)
 #ifdef HAVE_LIBARIB25
 	tdata.decoder = decoder;
 #endif
-	tdata.sock_data = NULL;
 	tdata.tune_persistent = false;
 
 	/* spawn signal handler thread */

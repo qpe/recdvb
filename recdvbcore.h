@@ -20,7 +20,6 @@
 #include <stdbool.h>
 #include <time.h>
 #include <pthread.h>
-#include <netinet/in.h>
 
 #include "decoder.h"
 #include "queue.h"
@@ -29,11 +28,6 @@
 #define MSGSZ		255
 
 /* type definitions */
-typedef struct sock_data {
-	int sfd;    /* socket fd */
-	struct sockaddr_in addr;
-} sock_data;
-
 typedef struct message_buf {
 	long mtype;
 	char mtext[MSGSZ + 1];
@@ -53,7 +47,6 @@ typedef struct thread_data {
 	bool tune_persistent;            //invaliable
 
 	QUEUE_T *queue;                  //invariable
-	sock_data *sock_data;            //invariable
 	pthread_t signal_thread;         //invariable
 #ifdef HAVE_LIBARIB25
 	decoder *decoder;                //invariable
