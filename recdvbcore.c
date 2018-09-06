@@ -310,10 +310,8 @@ int tune(char *channel, thread_data *tdata, int dev_num, unsigned int tsid)
 		}
 	}
 
-	if(!tdata->tune_persistent) {
-		/* show signal strength */
-		calc_cn();
-	}
+	/* show signal strength */
+	calc_cn();
 
 	return 0; /* success */
 }

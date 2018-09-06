@@ -30,13 +30,11 @@ typedef struct thread_data {
 
 	int wfd;    /* output file fd */ //invariable
 	int lnb;    /* LNB voltage */    //invariable
-	int msqid;                       //invariable
 	time_t start_time;               //invariable
 
 	int recsec;                      //xxx variable
 
 	bool indefinite;                 //invaliable
-	bool tune_persistent;            //invaliable
 
 	QUEUE_T *queue;                  //invariable
 	pthread_t signal_thread;         //invariable
@@ -51,3 +49,4 @@ void close_tuner(thread_data *tdata);
 void calc_cn(void);
 
 #endif
+
