@@ -52,15 +52,15 @@ void *reader_func(void *p)
 	buf.size = 0;
 	buf.data = NULL;
 
-	if(wfd == -1)
+	if (wfd == -1)
 		return NULL;
 
-	while(1) {
+	while (1) {
 		ssize_t wc = 0;
 		int file_err = 0;
 		qbuf = dequeue(p_queue);
 		/* no entry in the queue */
-		if(qbuf == NULL) {
+		if (qbuf == NULL) {
 			break;
 		}
 
@@ -69,9 +69,9 @@ void *reader_func(void *p)
 
 		buf = sbuf; /* default */
 #ifdef HAVE_LIBARIB25
-		if(use_b25) {
+		if (use_b25) {
 			code = b25_decode(dec, &sbuf, &dbuf);
-			if(code < 0) {
+			if (code < 0) {
 				fprintf(stderr, "b25_decode failed (code=%d).", code);
 				fprintf(stderr, " fall back to encrypted recording.\n");
 				use_b25 = false;
@@ -85,11 +85,11 @@ void *reader_func(void *p)
 		int size_remain = buf.size;
 		int offset = 0;
 
-		while(size_remain > 0) {
+		while (size_remain > 0) {
 			size_t ws = size_remain < SIZE_CHANK ? (size_t)size_remain : SIZE_CHANK;
 
 			wc = write(wfd, buf.data + offset, ws);
-			if(wc < 0) {
+			if (wc < 0) {
 				perror("write");
 				file_err = 1;
 				pthread_kill(signal_thread,
@@ -104,12 +104,12 @@ void *reader_func(void *p)
 		qbuf = NULL;
 
 		/* normal exit */
-		if((f_exit && !p_queue->num_used) || file_err) {
+		if ((f_exit && !p_queue->num_used) || file_err) {
 
 			buf = sbuf; /* default */
 
 #ifdef HAVE_LIBARIB25
-			if(use_b25) {
+			if (use_b25) {
 				code = b25_finish(dec, &dbuf);
 				if(code < 0)
 					fprintf(stderr, "b25_finish failed\n");
@@ -118,19 +118,18 @@ void *reader_func(void *p)
 			}
 #endif
 
-			if(!file_err) {
+			if (!file_err) {
 				wc = write(wfd, buf.data, (size_t)buf.size);
-				if(wc < 0) {
+				if (wc < 0) {
 					perror("write");
 					file_err = 1;
-					pthread_kill(signal_thread,
-						errno == EPIPE ? SIGPIPE : SIGUSR2);
+					pthread_kill(signal_thread, errno == EPIPE ? SIGPIPE : SIGUSR2);
 				}
 			}
 
 			break;
 		}
-	} /* while(1) */
+	} /* while (1) */
 
 	time_t cur_time;
 	time(&cur_time);

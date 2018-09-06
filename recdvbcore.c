@@ -41,9 +41,9 @@ static int set_lnb_off(const thread_data *tdata)
 {
 	struct dtv_property prop;
 	struct dtv_properties props;
-	if(tdata->lnb == 0) return 0;
-	if(lnb == 0) return 0;
-	if(fefd <= 0) return 0;
+	if (tdata->lnb == 0) return 0;
+	if (lnb == 0) return 0;
+	if (fefd <= 0) return 0;
 
 	prop.cmd = DTV_VOLTAGE;
 	prop.u.data = SEC_VOLTAGE_OFF;
@@ -60,16 +60,16 @@ static int set_lnb_off(const thread_data *tdata)
 
 void close_tuner(thread_data *tdata)
 {
-	if(fefd > 0){
+	if (fefd > 0) {
 		set_lnb_off(tdata);
 		close(fefd);
 		fefd = 0;
 	}
-	if(dmxfd > 0){
+	if (dmxfd > 0) {
 		close(dmxfd);
 		dmxfd = 0;
 	}
-	if(tdata->tfd == -1)
+	if (tdata->tfd == -1)
 		return;
 
 	close(tdata->tfd);
@@ -79,7 +79,7 @@ void close_tuner(thread_data *tdata)
 void calc_cn(void)
 {
 	int rc;
-	if(ioctl(fefd, FE_READ_SIGNAL_STRENGTH, &rc) >= 0) {
+	if (ioctl(fefd, FE_READ_SIGNAL_STRENGTH, &rc) >= 0) {
 		fprintf(stderr, "STRENGTH: %d\n", rc);
 		return;
 	}
@@ -95,7 +95,7 @@ void calc_cn(void)
 		}
 	}
 	int strength = 0;
-	if(ioctl(fefd, FE_READ_SNR, &strength) < 0) {
+	if (ioctl(fefd, FE_READ_SNR, &strength) < 0) {
 		fprintf(stderr, "calc_cn failed.\n");
 	} else {
 		fprintf(stderr, "SNR: %d\n", strength);
@@ -109,10 +109,10 @@ static int open_tuner(int dev_num, struct dvb_frontend_info *fe_info)
 {
 	char device[32] = {0};
 
-	if(fefd == 0){
+	if (fefd == 0) {
 		sprintf(device, "/dev/dvb/adapter%d/frontend0", dev_num);
 		fefd = open(device, O_RDWR);
-		if(fefd < 0) {
+		if (fefd < 0) {
 			fprintf(stderr, "cannot open frontend device\n");
 			fefd = 0;
 			return 1;
@@ -120,13 +120,12 @@ static int open_tuner(int dev_num, struct dvb_frontend_info *fe_info)
 		fprintf(stderr, "device = %s\n", device);
 	}
 
-	if ( (ioctl(fefd, FE_GET_INFO, fe_info) < 0)){
+	if ((ioctl(fefd, FE_GET_INFO, fe_info) < 0)) {
 		fprintf(stderr, "FE_GET_INFO failed\n");
 		return 1;
 	}
 
-	if((fe_info->type != FE_OFDM) &&
-	   (fe_info->type != FE_QPSK)){
+	if ((fe_info->type != FE_OFDM) && (fe_info->type != FE_QPSK)) {
 		fprintf(stderr, "type is not supported\n");
 		return 1;
 	}
@@ -140,7 +139,7 @@ static int set_ofdm_frequency(const char *channel, struct dtv_property *prop)
 
 	prop->cmd = DTV_FREQUENCY;
 
-	if( (fe_freq = (uint32_t)atoi(channel)) == 0){
+	if ((fe_freq = (uint32_t)atoi(channel)) == 0) {
 		fprintf(stderr, "channel is not number\n");
 		return 1;
 	}
@@ -157,16 +156,16 @@ static int set_qpsk_frequency(const char *channel, struct dtv_property *prop)
 
 	prop->cmd = DTV_FREQUENCY;
 
-	if( ((channel[0] == 'b') || (channel[0] == 'B')) &&
-	    ((channel[1] == 's') || (channel[1] == 'S')) ){
-		if( (fe_freq = (uint32_t)atoi(channel + 2)) == 0){
+	if (((channel[0] == 'b') || (channel[0] == 'B')) &&
+	    ((channel[1] == 's') || (channel[1] == 'S'))) {
+		if ((fe_freq = (uint32_t)atoi(channel + 2)) == 0) {
 			fprintf(stderr, "channel is not BSnn\n\tnn=numeric\n");
 			return 1;
 		}
 		prop->u.data = fe_freq * 19180 + 1030300;
-	} else if( ((channel[0] == 'n')||(channel[0] == 'N')) &&
-		   ((channel[1] == 'd')||(channel[1] == 'D')) ){
-		if( (fe_freq = (uint32_t)atoi(channel + 2)) == 0){
+	} else if (((channel[0] == 'n')||(channel[0] == 'N')) &&
+		   ((channel[1] == 'd')||(channel[1] == 'D'))) {
+		if ((fe_freq = (uint32_t)atoi(channel + 2)) == 0) {
 			fprintf(stderr, "channel is not NDnn\n\tnn=numeric\n");
 			return 1;
 		}
@@ -194,22 +193,22 @@ int tune(char *channel, thread_data *tdata, int dev_num, unsigned int tsid)
 
 	/* open tuner */
 	rc = open_tuner(dev_num, &fe_info);
-	if(rc != 0) return 1;
+	if (rc != 0) return 1;
 
 	fprintf(stderr,"Using DVB card \"%s\"\n",fe_info.name);
 
 	/* specify command */
 	props.num = 0;
-	if(fe_info.type == FE_OFDM){
+	if (fe_info.type == FE_OFDM) {
 		tdata->lnb = 0; /* lnb is unavailable */
 		rc = set_ofdm_frequency(channel, &prop[props.num]);
-		if(rc != 0) return 1;
+		if (rc != 0) return 1;
 		props.num++;
 	} else {
-		if(lnb == 0) {
+		if (lnb == 0) {
 			lnb = 1;
 			prop[props.num].cmd = DTV_VOLTAGE;
-			switch(tdata->lnb) {
+			switch (tdata->lnb) {
 			case 2:
 				prop[props.num].u.data = SEC_VOLTAGE_18;
 				break;
@@ -223,7 +222,7 @@ int tune(char *channel, thread_data *tdata, int dev_num, unsigned int tsid)
 			props.num++;
 		}
 		rc = set_qpsk_frequency(channel, &prop[props.num]);
-		if(rc != 0) return 1;
+		if (rc != 0) return 1;
 		props.num++;
 	}
 #ifdef DTV_STREAM_ID
@@ -255,7 +254,7 @@ int tune(char *channel, thread_data *tdata, int dev_num, unsigned int tsid)
 		fprintf(stderr, ".");
 		if (!poll(pfd, 1, 5000)) continue;
 		if (!(pfd[0].revents & POLLIN)) continue;
-		  if ((rc = ioctl(fefd, FE_GET_EVENT, &event)) < 0){
+		  if ((rc = ioctl(fefd, FE_GET_EVENT, &event)) < 0) {
 		  	if (errno != EOVERFLOW) {
 				perror("ioctl FE_GET_EVENT");
 				fprintf(stderr,"status = %d\n", rc);
@@ -276,9 +275,9 @@ int tune(char *channel, thread_data *tdata, int dev_num, unsigned int tsid)
 
 	fprintf(stderr, "ok\n");
 
-	if(dmxfd == 0){
+	if (dmxfd == 0) {
 		sprintf(device, "/dev/dvb/adapter%d/demux0", dev_num);
-		if((dmxfd = open(device, O_RDWR)) < 0){
+		if ((dmxfd = open(device, O_RDWR)) < 0) {
 			dmxfd = 0;
 			fprintf(stderr, "cannot open demux device\n");
 			return 1;
@@ -288,7 +287,6 @@ int tune(char *channel, thread_data *tdata, int dev_num, unsigned int tsid)
 	filter.pid = 0x2000;
 	filter.input = DMX_IN_FRONTEND;
 	filter.output = DMX_OUT_TS_TAP;
-//	filter.pes_type = DMX_PES_OTHER;
 	filter.pes_type = DMX_PES_VIDEO;
 	filter.flags = DMX_IMMEDIATE_START;
 	if (ioctl(dmxfd, DMX_SET_PES_FILTER, &filter) == -1) {
@@ -299,10 +297,9 @@ int tune(char *channel, thread_data *tdata, int dev_num, unsigned int tsid)
 		return 1;
 	}
 
-	if(tdata->tfd < 0){
+	if (tdata->tfd < 0) {
 		sprintf(device, "/dev/dvb/adapter%d/dvr0", dev_num);
-		if((tdata->tfd = open(device, O_RDONLY)) < 0){
-//		if((tdata->tfd = open(device, O_RDONLY|O_NONBLOCK)) < 0){
+		if ((tdata->tfd = open(device, O_RDONLY)) < 0) {
 			fprintf(stderr, "cannot open dvr device\n");
 			close(dmxfd);
 			dmxfd = 0;
@@ -315,3 +312,4 @@ int tune(char *channel, thread_data *tdata, int dev_num, unsigned int tsid)
 
 	return 0; /* success */
 }
+

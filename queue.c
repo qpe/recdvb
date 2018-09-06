@@ -30,7 +30,7 @@ QUEUE_T * create_queue(size_t size)
 
 	p_queue = (QUEUE_T*)calloc(memsize, sizeof(char));
 
-	if(p_queue != NULL) {
+	if (p_queue != NULL) {
 		p_queue->size = size;
 		p_queue->num_avail = size;
 		p_queue->num_used = 0;
@@ -44,7 +44,7 @@ QUEUE_T * create_queue(size_t size)
 
 void destroy_queue(QUEUE_T *p_queue)
 {
-	if(!p_queue) return;
+	if (!p_queue) return;
 
 	pthread_mutex_destroy(&p_queue->mutex);
 	pthread_cond_destroy(&p_queue->cond_avail);
@@ -63,7 +63,7 @@ void enqueue(QUEUE_T *p_queue, BUFSZ *data)
 	/* entered critical section */
 
 	/* wait while queue is full */
-	while(p_queue->num_avail == 0) {
+	while (p_queue->num_avail == 0) {
 		gettimeofday(&now, NULL);
 		spec.tv_sec = now.tv_sec + 1;
 		spec.tv_nsec = now.tv_usec * 1000;
@@ -71,10 +71,10 @@ void enqueue(QUEUE_T *p_queue, BUFSZ *data)
 		pthread_cond_timedwait(&p_queue->cond_avail,
 				       &p_queue->mutex, &spec);
 		retry_count++;
-		if(retry_count > 60) {
+		if (retry_count > 60) {
 			f_exit = true;
 		}
-		if(f_exit) {
+		if (f_exit) {
 			pthread_mutex_unlock(&p_queue->mutex);
 			return;
 		}
@@ -107,7 +107,7 @@ BUFSZ *dequeue(QUEUE_T *p_queue)
 	/* entered the critical section*/
 
 	/* wait while queue is empty */
-	while(p_queue->num_used == 0) {
+	while (p_queue->num_used == 0) {
 
 		gettimeofday(&now, NULL);
 		spec.tv_sec = now.tv_sec + 1;
@@ -116,10 +116,10 @@ BUFSZ *dequeue(QUEUE_T *p_queue)
 		pthread_cond_timedwait(&p_queue->cond_used,
 				       &p_queue->mutex, &spec);
 		retry_count++;
-		if(retry_count > 60) {
+		if (retry_count > 60) {
 			f_exit = true;
 		}
-		if(f_exit) {
+		if (f_exit) {
 			pthread_mutex_unlock(&p_queue->mutex);
 			return NULL;
 		}

@@ -23,17 +23,17 @@ static int do_mkdir(const char *path, mode_t mode)
 		errno = ENOTDIR;
 		status = -1;
 	}
-	return(status);
+
+	return status;
 }
 
 int mkpath(const char *path, mode_t mode)
 {
 	char *pp;
 	char *sp;
-	int status;
+	int status = 0;
 	char *copypath = strdup(path);
 
-	status = 0;
 	pp = copypath;
 	while (status == 0 && (sp = strchr(pp, '/')) != 0) {
 		if (sp != pp) {
@@ -47,5 +47,6 @@ int mkpath(const char *path, mode_t mode)
 	if (status == 0)
 		status = do_mkdir(path, mode);
 	free(copypath);
-	return (status);
+	return status;
 }
+

@@ -24,15 +24,15 @@
 int parse_time(char *rectimestr, int *recsec)
 {
 	/* indefinite */
-	if(!strcmp("-", rectimestr)) {
+	if (!strcmp("-", rectimestr)) {
 		*recsec = -1;
 	}
 	/* colon */
-	else if(strchr(rectimestr, ':')) {
+	else if (strchr(rectimestr, ':')) {
 		int n1, n2, n3;
-		if(sscanf(rectimestr, "%d:%d:%d", &n1, &n2, &n3) == 3)
+		if (sscanf(rectimestr, "%d:%d:%d", &n1, &n2, &n3) == 3)
 			*recsec = n1 * 3600 + n2 * 60 + n3;
-		else if(sscanf(rectimestr, "%d:%d", &n1, &n2) == 2)
+		else if (sscanf(rectimestr, "%d:%d", &n1, &n2) == 2)
 			*recsec = n1 * 3600 + n2 * 60;
 		else
 			return 1; /* unsuccessful */
@@ -44,27 +44,28 @@ int parse_time(char *rectimestr, int *recsec)
 		char *p1, *p2;
 		int  flag;
 
-		if( *rectimestr == '-' ){
+		if (*rectimestr == '-') {
 			rectimestr++;
 			flag = 1;
-		}else
+		} else {
 			flag = 0;
+		}
 		tmpstr = strdup(rectimestr);
 		p1 = tmpstr;
-		while(*p1 && !isdigit(*p1))
+		while (*p1 && !isdigit(*p1))
 			p1++;
 
 		/* hour */
-		if((p2 = strchr(p1, 'H')) || (p2 = strchr(p1, 'h'))) {
+		if ((p2 = strchr(p1, 'H')) || (p2 = strchr(p1, 'h'))) {
 			*p2 = '\0';
 			*recsec += atoi(p1) * 3600;
 			p1 = p2 + 1;
-			while(*p1 && !isdigit(*p1))
+			while (*p1 && !isdigit(*p1))
 				p1++;
 		}
 
 		/* minute */
-		if((p2 = strchr(p1, 'M')) || (p2 = strchr(p1, 'm'))) {
+		if ((p2 = strchr(p1, 'M')) || (p2 = strchr(p1, 'm'))) {
 			*p2 = '\0';
 			*recsec += atoi(p1) * 60;
 			p1 = p2 + 1;
@@ -74,7 +75,7 @@ int parse_time(char *rectimestr, int *recsec)
 
 		/* second */
 		*recsec += atoi(p1);
-		if( flag )
+		if (flag)
 			*recsec *= -1;
 
 		free(tmpstr);
@@ -83,3 +84,4 @@ int parse_time(char *rectimestr, int *recsec)
 
 	return 0;
 }
+
