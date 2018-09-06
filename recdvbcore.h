@@ -17,7 +17,6 @@
 #ifndef RECDVB_RECDVBCORE_H
 #define RECDVB_RECDVBCORE_H
 
-#include <stdbool.h>
 #include <time.h>
 #include <pthread.h>
 
@@ -26,15 +25,11 @@
 
 /* type definitions */
 typedef struct thread_data {
-	int tfd;    /* tuner fd */       //xxx variable
+	int tfd;  /* tuner fd */
+	int wfd;  /* output file fd */
+	int lnb;  /* LNB voltage */
 
-	int wfd;    /* output file fd */ //invariable
-	int lnb;    /* LNB voltage */    //invariable
 	time_t start_time;               //invariable
-
-	int recsec;                      //xxx variable
-
-	bool indefinite;                 //invaliable
 
 	QUEUE_T *queue;                  //invariable
 	pthread_t signal_thread;         //invariable

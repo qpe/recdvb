@@ -30,9 +30,6 @@
 
 #include "recdvbcore.h"
 
-/* globals */
-bool f_exit = false;
-
 static int fefd = 0;
 static int dmxfd = 0;
 static int lnb = 0;

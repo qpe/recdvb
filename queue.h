@@ -21,7 +21,7 @@
 #include <stddef.h>
 #include <pthread.h>
 
-#define MAX_READ_SIZE           (188 * 87) /* 188*87=16356 */
+#define MAX_READ_SIZE           (188 * 87) // 188 * 87 = 16356
 
 typedef struct _BUFSZ {
 	ssize_t size;
@@ -29,15 +29,15 @@ typedef struct _BUFSZ {
 } BUFSZ;
 
 typedef struct _QUEUE_T {
-	unsigned int in;           // 次に入れるインデックス
-	unsigned int out;          // 次に出すインデックス
-	size_t size;               // キューのサイズ
-	size_t num_avail;          // 満タンになると 0 になる
-	size_t num_used;           // 空っぽになると 0 になる
+	unsigned int in;           // index for input
+	unsigned int out;          // index for output
+	size_t size;               // queue size
+	size_t num_avail;          // when fill queue, set to zero.
+	size_t num_used;           // when become empty, set to zero.
 	pthread_mutex_t mutex;
-	pthread_cond_t cond_avail; // データが満タンのときに待つための cond
-	pthread_cond_t cond_used;  // データが空のときに待つための cond
-	BUFSZ *buffer[1];          // バッファポインタ
+	pthread_cond_t cond_avail; // cond for waiting when fill queue
+	pthread_cond_t cond_used;  // cond for waiting when become empty queue
+	BUFSZ *buffer[1];          // buffer pointer
 } QUEUE_T;
 
 QUEUE_T * create_queue(size_t size);
@@ -46,3 +46,4 @@ void enqueue(QUEUE_T *p_queue, BUFSZ *data);
 BUFSZ *dequeue(QUEUE_T *p_queue);
 
 #endif
+

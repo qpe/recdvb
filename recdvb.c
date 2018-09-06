@@ -18,6 +18,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <signal.h>
+#include <stdbool.h>
 
 #include <fcntl.h>
 #include <getopt.h>
@@ -36,7 +37,7 @@
 #include "recdvb.h"
 
 /* globals */
-extern bool f_exit;
+bool f_exit = false;
 
 /*
  * for options
@@ -178,6 +179,8 @@ int main(int argc, char **argv)
 
 	int result;
 	int option_index;
+	int recsec;
+	bool indefinite = false;
 
 #ifdef HAVE_LIBARIB25
 	decoder *decoder = NULL;
@@ -277,11 +280,11 @@ int main(int argc, char **argv)
 		return 1;
 
 	/* set recsec */
-	if (parse_time(argv[optind + 1], &tdata.recsec) != 0) // no other thread --yaz
+	if (parse_time(argv[optind + 1], &recsec) != 0) // no other thread --yaz
 		return 1;
 
-	if (tdata.recsec == -1)
-		tdata.indefinite = true;
+	if (recsec == -1)
+		indefinite = true;
 
 	/* open output file */
 	char *destfile = argv[optind + 2];
@@ -344,7 +347,7 @@ int main(int argc, char **argv)
 		}
 		bufptr->size = read(tdata.tfd, bufptr->buffer, MAX_READ_SIZE);
 		if (bufptr->size <= 0) {
-			if ((cur_time - tdata.start_time) >= tdata.recsec && !tdata.indefinite) {
+			if ((cur_time - tdata.start_time) >= recsec && !indefinite) {
 				f_exit = true;
 				enqueue(p_queue, NULL);
 				break;
@@ -357,7 +360,7 @@ int main(int argc, char **argv)
 
 		/* stop recording */
 		time(&cur_time);
-		if ((cur_time - tdata.start_time) >= tdata.recsec && !tdata.indefinite) {
+		if ((cur_time - tdata.start_time) >= recsec && !indefinite) {
 			break;
 		}
 	}
