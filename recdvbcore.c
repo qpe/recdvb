@@ -30,9 +30,13 @@
 
 #include "recdvbcore.h"
 
+#define ISDBTYPE_ISDBT 0
+#define ISDBTYPE_ISDBS 1
+
 static int fefd = 0;
 static int dmxfd = 0;
 static int lnb = 0;
+static int isdbtype = 0;
 
 static int set_lnb_off(const thread_data *tdata)
 {
@@ -46,6 +50,36 @@ static int set_lnb_off(const thread_data *tdata)
 	}
 	lnb = 0;
 	return 0;
+}
+
+static int is_isdb()
+{
+	struct dtv_properties props;
+	struct dtv_property prop[1];
+
+	prop[0].cmd = DTV_ENUM_DELSYS;
+	props.num = 1;
+	props.props = prop;
+
+	if (ioctl(fefd, FE_GET_PROPERTY, &props) != 0)
+	{
+		fprintf(stderr, "Error: ioctl FE_GET_PROPERTY failed. (errno=%d)\n", errno);
+		return -1;
+	}
+
+	for (__u32 i = 0; i < prop[0].u.buffer.len; ++i)
+	{
+		if (prop[0].u.buffer.data[i] == SYS_ISDBT)
+		{
+			return ISDBTYPE_ISDBT;
+		}
+
+		if (prop[0].u.buffer.data[i] == SYS_ISDBS)
+		{
+			return ISDBTYPE_ISDBS;
+		}
+	}
+	return -1;
 }
 
 void close_tuner(thread_data *tdata)
@@ -117,9 +151,6 @@ void show_frontend_info(void)
 	}
 }
 
-/*
- * success -> return 0
- */
 static int open_tuner(int dev_num, struct dvb_frontend_info *fe_info)
 {
 	char device[32] = {0};
@@ -140,8 +171,10 @@ static int open_tuner(int dev_num, struct dvb_frontend_info *fe_info)
 		return 1;
 	}
 
-	if ((fe_info->type != FE_OFDM) && (fe_info->type != FE_QPSK)) {
-		fprintf(stderr, "type is not supported\n");
+	isdbtype = is_isdb();
+
+	if ((isdbtype != ISDBTYPE_ISDBT) && (isdbtype != ISDBTYPE_ISDBS)) {
+		fprintf(stderr, "Error: tuner type is not ISDB-T/ISDB-S.\n");
 		return 1;
 	}
 
@@ -194,7 +227,6 @@ static int set_qpsk_frequency(const char *channel, struct dtv_property *prop)
 	return 0;
 }
 
-/* from checksignal.c */
 int tune(char *channel, thread_data *tdata, int dev_num, unsigned int tsid)
 {
 	struct dtv_property prop[4];
@@ -214,12 +246,14 @@ int tune(char *channel, thread_data *tdata, int dev_num, unsigned int tsid)
 
 	/* specify command */
 	props.num = 0;
-	if (fe_info.type == FE_OFDM) {
+	if (isdbtype == ISDBTYPE_ISDBT) {
+		/* ISDB-T */
 		tdata->lnb = 0; /* lnb is unavailable */
 		rc = set_ofdm_frequency(channel, &prop[props.num]);
 		if (rc != 0) return 1;
 		props.num++;
 	} else {
+		/* ISDB-S */
 		if (lnb == 0) {
 			lnb = 1;
 			prop[props.num].cmd = DTV_VOLTAGE;
