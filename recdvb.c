@@ -99,6 +99,155 @@ static void show_options(void)
 	fprintf(stderr, options_desc);
 }
 
+static void show_help(char **argv)
+{
+	fprintf(stderr, "\n");
+	show_usage(argv[0]);
+	fprintf(stderr, "\n");
+	show_options();
+	fprintf(stderr, "\n");
+}
+
+static void show_version(char **argv)
+{
+	fprintf(stderr, "%s %s\n", argv[0], version);
+	fprintf(stderr, "recorder command for DVB tuner.\n");
+}
+
+static int parse_options(struct recdvb_options *opts, int argc, char **argv)
+{
+	int rc;
+	int option_index;
+	bool help = false;
+	bool version = false;
+	bool validation = true;
+
+	/* set defaults */
+	opts->lnb = 0;
+	opts->dev_num = 0;
+	opts->tsid = 0;
+	opts->destfile = NULL;
+	opts->channel = NULL;
+	opts->recsecstr = NULL;
+	opts->recsec = 0;
+	opts->use_stdout = false;
+
+	/* get option args */
+	while ((rc = getopt_long(argc, argv, short_options, long_options, &option_index)) != -1) {
+		switch (rc) {
+#ifdef HAVE_LIBARIB25
+		case 'b':
+			opts->b25 = true;
+			break;
+		case 's':
+			opts->strip = true;
+			break;
+		case 'm':
+			opts->emm = true;
+			break;
+		case 'r':
+			opts->round = atoi(optarg);
+			break;
+#endif
+		case 'h':
+			help = true;
+			break;
+		case 'v':
+			version = true;
+			break;
+		/* following options require argument */
+		case 'n':
+			opts->lnb = atoi(optarg);
+			break;
+		case 'd':
+			opts->dev_num = atoi(optarg);
+			break;
+		case 't':
+			opts->tsid = (unsigned int)atoi(optarg);
+			/* hex */
+			if (strlen(optarg) > 2 && optarg[0] == '0' && (optarg[1] == 'X' || optarg[1] == 'x')) {
+				sscanf(optarg + 2, "%x", &opts->tsid);
+			}
+			break;
+		}
+	}
+
+	if (argc - optind < 3) {
+		fprintf(stderr, "Error: Some required parameters are missing!\n");
+		fprintf(stderr, "       Try '%s --help' for more information.\n", argv[0]);
+		return -1;
+	}
+
+	/* get no option args */
+	opts->channel = argv[optind];
+	opts->recsecstr = argv[optind + 1];
+	opts->destfile = argv[optind + 2];
+
+	if (help) {
+		show_help(argv);
+		return 1;
+	}
+
+	if (version) {
+		show_version(argv);
+		return 1;
+	}
+	
+	// check options
+	if (opts->destfile && !strcmp("-", opts->destfile)) {
+		opts->use_stdout = true;
+	}
+
+	switch (opts->lnb) {
+	case 0:
+	case 11:
+	case 15:
+		break;
+	default:
+		fprintf(stderr, "Error: Specified LNB value is not valid.\n");
+		validation = false;
+	}
+
+	if (opts->tsid == 0) {
+		/* update tsid when channel is BS */
+		set_bs_tsid(opts->channel, &opts->tsid);
+	}
+
+	if (parse_time(opts->recsecstr, &opts->recsec) != 0) {
+		fprintf(stderr, "Error: Failed to parse recsec.\n");
+		validation = false;
+	}
+
+	if (!validation) {
+		return -1;
+	}
+
+	return 0;
+}
+
+void show_user_input(struct recdvb_options *opts)
+{
+	fprintf(stderr, "Info: Specified options:\n");
+	fprintf(stderr, "      Channel: %s\n", opts->channel);
+	fprintf(stderr, "      Destination file: %s\n", opts->destfile);
+	if (opts->recsec == -1) {
+		fprintf(stderr, "      Record seconds: indefinite\n");
+	} else {
+		fprintf(stderr, "      Record seconds: %d\n", opts->recsec);
+	}
+	fprintf(stderr, "      Device Number: %d\n", opts->dev_num);
+	fprintf(stderr, "      TSID: %d\n", opts->dev_num);
+	fprintf(stderr, "      LNB: %dV\n", opts->lnb);
+#ifdef HAVE_LIBARIB25
+	fprintf(stderr, "      B25 decode: %s\n", opts->b25 ? "enable" : "disable");
+	if (opts->b25) {
+		fprintf(stderr, "          strip: %s\n", opts->strip ? "enable" : "disable");
+		fprintf(stderr, "          emm: %s\n", opts->strip ? "enable" : "disable");
+		fprintf(stderr, "          round: %d\n", opts->round);
+	}
+#endif
+}
+
 static void cleanup(thread_data *tdata)
 {
 	f_exit = true;
@@ -168,153 +317,71 @@ static void init_signal_handlers(pthread_t *signal_thread, thread_data *tdata)
 
 int main(int argc, char **argv)
 {
+	int rc;
 	time_t cur_time;
 	pthread_t signal_thread;
 	pthread_t reader_thread;
 	QUEUE_T *p_queue = create_queue(MAX_QUEUE);
 	BUFSZ   *bufptr;
 	static thread_data tdata;
+	struct recdvb_options opts;
+
+	/* default value */
 	tdata.lnb = 0;
 	tdata.tfd = -1;
 
-	int result;
-	int option_index;
-	int recsec;
-	bool indefinite = false;
-
 #ifdef HAVE_LIBARIB25
 	decoder *decoder = NULL;
-	bool use_b25 = false;
 	decoder_options dopt = {
 		4,  /* round */
 		0,  /* strip */
 		0   /* emm */
 	};
 #endif
-	bool use_stdout = false;
-	int dev_num = 0;
-	int val;
-	char *voltage[] = {"0V", "11V", "15V"};
-	unsigned int tsid = 0;
-	char *pch = NULL;
 
-	while ((result = getopt_long(argc, argv, short_options, long_options, &option_index)) != -1) {
-		switch (result) {
-#ifdef HAVE_LIBARIB25
-		case 'b':
-			use_b25 = true;
-			fprintf(stderr, "using B25...\n");
-			break;
-		case 's':
-			dopt.strip = true;
-			fprintf(stderr, "enable B25 strip\n");
-			break;
-		case 'm':
-			dopt.emm = true;
-			fprintf(stderr, "enable B25 emm processing\n");
-			break;
-		case 'r':
-			dopt.round = atoi(optarg);
-			fprintf(stderr, "set round %d\n", dopt.round);
-			break;
-#endif
-		case 'h':
-			fprintf(stderr, "\n");
-			show_usage(argv[0]);
-			fprintf(stderr, "\n");
-			show_options();
-			fprintf(stderr, "\n");
-			exit(0);
-		case 'v':
-			fprintf(stderr, "%s %s\n", argv[0], version);
-			fprintf(stderr, "recorder command for DVB tuner.\n");
-			exit(0);
-		/* following options require argument */
-		case 'n':
-			val = atoi(optarg);
-			switch (val) {
-			case 11:
-				tdata.lnb = 1;
-				break;
-			case 15:
-				tdata.lnb = 2;
-				break;
-			default:
-				tdata.lnb = 0;
-				break;
-			}
-			fprintf(stderr, "LNB = %s\n", voltage[tdata.lnb]);
-			break;
-		case 'd':
-			dev_num = atoi(optarg);
-			fprintf(stderr, "using device: /dev/dvb/adapter%d\n", dev_num);
-			break;
-		case 't':
-			tsid = (unsigned int)atoi(optarg);
-			if (strlen(optarg) > 2) {
-				if ((optarg[0] == '0') && ((optarg[1] == 'X') ||(optarg[1] == 'x'))) {
-					sscanf(optarg+2, "%x", &tsid);
-				}
-			}
-			fprintf(stderr, "tsid = 0x%x\n", tsid);
-			break;
-		}
+	rc = parse_options(&opts, argc, argv);
+	if (rc == -1) {
+		return 1; // exit with failure.
+	}
+	if (rc == 1) {
+		return 0; // exit successfully.
 	}
 
-	if (argc - optind < 3) {
-		fprintf(stderr, "Some required parameters are missing!\n");
-		fprintf(stderr, "Try '%s --help' for more information.\n", argv[0]);
-		return 1;
+	show_user_input(&opts);
+
+	/* open input tuner */
+	if (tune(opts.channel, &tdata, opts.dev_num, opts.tsid) != 0) {
+		fprintf(stderr, "Error: tuning failed.\n");
 	}
-
-	fprintf(stderr, "pid = %d\n", getpid());
-
-	if (pch == NULL) pch = argv[optind];
-
-	if (!tsid) {
-		set_bs_tsid(pch, &tsid);
-	}
-
-	/* tune */
-	if (tune(pch, &tdata, dev_num, tsid) != 0)
-		return 1;
-
-	/* set recsec */
-	if (parse_time(argv[optind + 1], &recsec) != 0) // no other thread --yaz
-		return 1;
-
-	if (recsec == -1)
-		indefinite = true;
 
 	/* open output file */
-	char *destfile = argv[optind + 2];
-	if (destfile && !strcmp("-", destfile)) {
-		use_stdout = true;
+	if (opts.use_stdout) {
 		tdata.wfd = 1; /* stdout */
 	} else {
 		int status;
-		char *path = strdup(argv[optind + 2]);
+		char *path = strdup(opts.destfile);
 		char *dir = dirname(path);
 		status = mkpath(dir, 0777);
-		if (status == -1)
-			perror("mkpath");
+		if (status == -1) {
+			fprintf(stderr, "Error: mkpath failed.\n");
+		}
 		free(path);
 
-		tdata.wfd = open(argv[optind + 2], (O_RDWR | O_CREAT | O_TRUNC), 0666);
+		tdata.wfd = open(opts.destfile, (O_RDWR | O_CREAT | O_TRUNC), 0666);
 		if (tdata.wfd < 0) {
-			fprintf(stderr, "Cannot open output file: %s\n", argv[optind + 2]);
+			fprintf(stderr, "Error: Cannot open output file.\n");
 			return 1;
 		}
 	}
 
 #ifdef HAVE_LIBARIB25
 	/* initialize decoder */
-	if (use_b25) {
+	if (opts.b25) {
 		decoder = b25_startup(&dopt);
 		if (!decoder) {
-			fprintf(stderr, "Cannot start b25 decoder\n");
-			fprintf(stderr, "Fall back to encrypted recording\n");
-			use_b25 = false;
+			fprintf(stderr, "Error: Cannot start b25 decoder\n");
+			fprintf(stderr, "       Fall back to encrypted recording\n");
+			opts.b25 = false;
 		}
 	}
 #endif
@@ -331,7 +398,7 @@ int main(int argc, char **argv)
 	tdata.signal_thread = signal_thread;
 	pthread_create(&reader_thread, NULL, reader_func, &tdata);
 
-	fprintf(stderr, "\nRecording...\n");
+	fprintf(stderr, "Info: Recording...\n");
 
 	time(&tdata.start_time);
 
@@ -347,7 +414,7 @@ int main(int argc, char **argv)
 		}
 		bufptr->size = read(tdata.tfd, bufptr->buffer, MAX_READ_SIZE);
 		if (bufptr->size <= 0) {
-			if ((cur_time - tdata.start_time) >= recsec && !indefinite) {
+			if ((cur_time - tdata.start_time) >= opts.recsec && opts.recsec != -1) {
 				f_exit = true;
 				enqueue(p_queue, NULL);
 				break;
@@ -360,7 +427,7 @@ int main(int argc, char **argv)
 
 		/* stop recording */
 		time(&cur_time);
-		if ((cur_time - tdata.start_time) >= recsec && !indefinite) {
+		if ((cur_time - tdata.start_time) >= opts.recsec && opts.recsec != -1) {
 			break;
 		}
 	}
@@ -378,14 +445,14 @@ int main(int argc, char **argv)
 	destroy_queue(p_queue);
 
 	/* close output file */
-	if (!use_stdout) {
+	if (!opts.use_stdout) {
 		fsync(tdata.wfd);
 		close(tdata.wfd);
 	}
 
 #ifdef HAVE_LIBARIB25
 	/* release decoder */
-	if (use_b25) {
+	if (opts.b25) {
 		b25_shutdown(decoder);
 	}
 #endif
