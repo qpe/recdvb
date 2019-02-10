@@ -8,6 +8,9 @@ Based on recdvb published on http://cgi1.plala.or.jp/~sat/
 recdvb - command to record ISDB-T/S signals for linux DVB devices.
 Maintain for pt3 with mirakurun.
 
+The Defference between original:
+    - Remove network options
+    - support only DVBv5
 
 ## Alternative
 
@@ -70,7 +73,7 @@ Maintain for pt3 with mirakurun.
 
 ## Tested environment
 
-- Device: PT3 (with kernel 4.9.6 earth_pt3 driver)
+- Device: PT3 (with kernel 4.14.83 earth_pt3 driver)
 - Software: Mirakurun
 
 

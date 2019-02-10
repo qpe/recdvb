@@ -36,19 +36,12 @@ static int lnb = 0;
 
 static int set_lnb_off(const thread_data *tdata)
 {
-	struct dtv_property prop;
-	struct dtv_properties props;
 	if (tdata->lnb == 0) return 0;
 	if (lnb == 0) return 0;
 	if (fefd <= 0) return 0;
 
-	prop.cmd = DTV_VOLTAGE;
-	prop.u.data = SEC_VOLTAGE_OFF;
-	props.props = &prop;
-	props.num = 1;
-
-	if (ioctl(fefd, FE_SET_PROPERTY, &props) == -1) {
-		perror("ioctl FE_SET_PROPERTY(set_lnb_off) failed.\n");
+	if (ioctl(fefd, FE_SET_VOLTAGE, SEC_VOLTAGE_OFF) == -1) {
+		perror("ioctl FE_SET_VOLTAGE failed.\n");
 		return 1;
 	}
 	lnb = 0;
@@ -73,29 +66,54 @@ void close_tuner(thread_data *tdata)
 	tdata->tfd = -1;
 }
 
-void calc_cn(void)
+void show_frontend_info(void)
 {
-	int rc;
-	if (ioctl(fefd, FE_READ_SIGNAL_STRENGTH, &rc) >= 0) {
-		fprintf(stderr, "STRENGTH: %d\n", rc);
-		return;
-	}
-	{
-		struct dtv_property prop[1];
-		struct dtv_properties props;
-		prop[0].cmd = DTV_STAT_SIGNAL_STRENGTH;
-		props.props = prop;
-		props.num = 1;
-		if (ioctl(fefd, FE_GET_PROPERTY, &props) >= 0) {
-			fprintf(stderr, "SNR(FE_GET_PROPERTY): %llu\n", prop[0].u.st.stat[0].uvalue);
-			return;
+	struct dtv_property prop[4];
+	struct dtv_properties props;
+	prop[0].cmd = DTV_STAT_CNR;
+	prop[1].cmd = DTV_STAT_ERROR_BLOCK_COUNT;
+	prop[2].cmd = DTV_STAT_TOTAL_BLOCK_COUNT;
+	prop[3].cmd = DTV_STAT_SIGNAL_STRENGTH;
+	props.props = prop;
+	props.num = 4;
+	if (ioctl(fefd, FE_GET_PROPERTY, &props) == 0) {
+
+		fprintf(stderr, "Frontend info:");
+
+		for (int i = 0; i < 4; ++i) {
+			for (int j = 0; j == 0 || j < prop[i].u.st.len; ++j) {
+				switch (i) {
+				case 0:
+					fprintf(stderr, " CNR[%d]=", j);
+					break;
+				case 1:
+					fprintf(stderr, " ErrorBlock[%d]=", j);
+					break;
+				case 2:
+					fprintf(stderr, " TotalBlock[%d]=", j);
+					break;
+				case 3:
+					fprintf(stderr, " Signal[%d]=", j);
+					break;
+				}
+
+				switch (prop[i].u.st.stat[j].scale) {
+				case FE_SCALE_COUNTER:
+					fprintf(stderr, "%llu", prop[i].u.st.stat[j].uvalue);
+					break;
+				case FE_SCALE_RELATIVE:
+					fprintf(stderr, "%lf", (double)prop[i].u.st.stat[j].uvalue / 655.35);
+					break;
+				case FE_SCALE_DECIBEL:
+					fprintf(stderr, "%lf", (double)prop[i].u.st.stat[j].svalue / 1000);
+					break;
+				case FE_SCALE_NOT_AVAILABLE:
+					fprintf(stderr, "N/A");
+					break;
+				}
+			}
 		}
-	}
-	int strength = 0;
-	if (ioctl(fefd, FE_READ_SNR, &strength) < 0) {
-		fprintf(stderr, "calc_cn failed.\n");
-	} else {
-		fprintf(stderr, "SNR: %d\n", strength);
+		fprintf(stderr, "\n");
 	}
 }
 
@@ -281,6 +299,7 @@ int tune(char *channel, thread_data *tdata, int dev_num, unsigned int tsid)
 		}
 	}
 
+	// 0x2000 pass all pids
 	filter.pid = 0x2000;
 	filter.input = DMX_IN_FRONTEND;
 	filter.output = DMX_OUT_TS_TAP;
@@ -305,7 +324,7 @@ int tune(char *channel, thread_data *tdata, int dev_num, unsigned int tsid)
 	}
 
 	/* show signal strength */
-	calc_cn();
+	show_frontend_info();
 
 	return 0; /* success */
 }
