@@ -233,9 +233,8 @@ int tune(char *channel, thread_data *tdata, int dev_num, unsigned int tsid)
 	struct dtv_properties props;
 	struct dvb_frontend_info fe_info;
 	int rc, i;
+	unsigned int status;
 	struct dmx_pes_filter_params filter;
-	struct dvb_frontend_event event;
-	struct pollfd pfd[1];
 	char device[32];
 
 	/* open tuner */
@@ -290,37 +289,25 @@ int tune(char *channel, thread_data *tdata, int dev_num, unsigned int tsid)
 		return 1;
 	}
 
-	pfd[0].fd = fefd;
-	pfd[0].events = POLLIN;
-	event.status = 0;
-	fprintf(stderr,"polling");
-	for (i = 0; i < 5; i++) {
-		if ((event.status & FE_TIMEDOUT) != 0) break;
-		if ((event.status & FE_HAS_LOCK) != 0) break;
+	/* wait tuning complete */
+	fprintf(stderr, "Info: Tuning\n");
 
-		fprintf(stderr, ".");
-		if (!poll(pfd, 1, 5000)) continue;
-		if (!(pfd[0].revents & POLLIN)) continue;
-		  if ((rc = ioctl(fefd, FE_GET_EVENT, &event)) < 0) {
-		  	if (errno != EOVERFLOW) {
-				perror("ioctl FE_GET_EVENT");
-				fprintf(stderr,"status = %d\n", rc);
-				fprintf(stderr,"errno = %d\n", errno);
-				return -1;
-			} else {
-				fprintf(stderr, "\n");
-				fprintf(stderr, "Overflow error, trying again ");
-				fprintf(stderr, "(status = %d, errno = %d)", rc, errno);
-			}
+	for (i = 0; i < 50; i++) {
+		if (ioctl(fefd, FE_READ_STATUS, &status) == -1) {
+			fprintf(stderr, "Error: FE_READ_STATUS failed. (errno=%d)\n", errno);
+			return -1;
 		}
+
+		if(status & FE_HAS_LOCK) break;
+		usleep(100000); // sleep 0.1s
 	}
 
-	if ((event.status & FE_HAS_LOCK) == 0) {
-		fprintf(stderr, "\nCannot lock to the signal on the given channel\n");
+	if((status & FE_HAS_LOCK) == 0) {
+		fprintf(stderr, "Error: Cannot lock to the signal on the given channel.\n");
 		return 1;
 	}
 
-	fprintf(stderr, "ok\n");
+	fprintf(stderr, "Info: Tuning ok.\n");
 
 	if (dmxfd == 0) {
 		sprintf(device, "/dev/dvb/adapter%d/demux0", dev_num);
