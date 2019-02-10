@@ -273,14 +273,12 @@ int tune(char *channel, thread_data *tdata, int dev_num, unsigned int tsid)
 		rc = set_qpsk_frequency(channel, &prop[props.num]);
 		if (rc != 0) return 1;
 		props.num++;
+
+		/* set tsid */
+		prop[props.num].cmd = DTV_STREAM_ID;
+		prop[props.num].u.data = tsid;
+		props.num++;
 	}
-#ifdef DTV_STREAM_ID
-	prop[props.num].cmd = DTV_STREAM_ID;
-#else
-	prop[props.num].cmd = DTV_ISDBS_TS_ID;
-#endif
-	prop[props.num].u.data = tsid;
-	props.num++;
 
 	prop[props.num].cmd = DTV_TUNE;
 	props.num++;
