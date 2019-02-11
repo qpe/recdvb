@@ -16,50 +16,92 @@
  */
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <stdbool.h>
+
 #include <errno.h>
 #include <signal.h>
 #include <unistd.h>
-
-#include <pthread.h>
-
-#include "queue.h"
-#include "recdvbcore.h"
+#include <libgen.h>
+#include <fcntl.h>
 
 #include "reader.h"
 
+#include "mkpath.h"
+#include "decoder.h"
+#include "recdvbcore.h"
+
 /* maximum write length at once */
 #define SIZE_CHANK 1316
-
-extern bool f_exit;
 
 /* this function will be reader thread */
 void *reader_func(void *p)
 {
 	thread_data *tdata = (thread_data *)p;
 	QUEUE_T *p_queue = tdata->queue;
-	int wfd = tdata->wfd;
+	struct recdvb_options *opts = tdata->opts;
+	int wfd = -1;
 #ifdef HAVE_LIBARIB25
 	int code;
-	decoder *dec = tdata->decoder;
-	bool use_b25 = dec ? true : false;
+	int use_b25 = 0;
+	decoder *decoder = NULL;
+	decoder_options dopt = {
+		4,  /* round */
+		0,  /* strip */
+		0   /* emm */
+	};
 	ARIB_STD_B25_BUFFER dbuf;
 #endif
-	pthread_t signal_thread = tdata->signal_thread;
 	BUFSZ *qbuf;
 	ARIB_STD_B25_BUFFER sbuf, buf;
 
 	buf.size = 0;
 	buf.data = NULL;
 
-	if (wfd == -1)
-		return NULL;
+#ifdef HAVE_LIBARIB25
+	/* initialize decoder */
+	if (opts->b25) {
+		decoder = b25_startup(&dopt);
+		if (decoder == NULL) {
+			tdata->status = READER_EXIT_EINIT_DECODER;
+			goto end;
+		}
+		use_b25 = 1;
+	}
+#endif
+
+	/* open output file */
+	if (opts->use_stdout) {
+		wfd = 1; /* stdout */
+	} else {
+		int status;
+		char *path = strdup(opts->destfile);
+		char *dir = dirname(path);
+		status = mkpath(dir, 0777);
+		if (status == -1) {
+			tdata->status = READER_EXIT_EMKPATH;
+			goto end;
+		}
+		free(path);
+
+		wfd = open(opts->destfile, O_RDWR | O_CREAT | O_TRUNC, 0666);
+		if (wfd < 0) {
+			tdata->status = READER_EXIT_EOPEN_DESTFILE;
+			goto end;
+		}
+	}
 
 	while (1) {
 		ssize_t wc = 0;
 		int file_err = 0;
-		qbuf = dequeue(p_queue);
-		/* no entry in the queue */
+
+		if (dequeue(p_queue, &qbuf) != 0) {
+			/* no queue timeout */
+			tdata->status = READER_EXIT_TIMEOUT;
+			break;
+		}
+
+		/* normal exit */
 		if (qbuf == NULL) {
 			break;
 		}
@@ -68,13 +110,14 @@ void *reader_func(void *p)
 		sbuf.size = (int32_t)qbuf->size;
 
 		buf = sbuf; /* default */
+
 #ifdef HAVE_LIBARIB25
 		if (use_b25) {
-			code = b25_decode(dec, &sbuf, &dbuf);
+			code = b25_decode(decoder, &sbuf, &dbuf);
 			if (code < 0) {
 				fprintf(stderr, "b25_decode failed (code=%d).", code);
 				fprintf(stderr, " fall back to encrypted recording.\n");
-				use_b25 = false;
+				use_b25 = 0;
 			}
 			else
 				buf = dbuf;
@@ -90,10 +133,7 @@ void *reader_func(void *p)
 
 			wc = write(wfd, buf.data + offset, ws);
 			if (wc < 0) {
-				perror("write");
 				file_err = 1;
-				pthread_kill(signal_thread,
-					errno == EPIPE ? SIGPIPE : SIGUSR2);
 				break;
 			}
 			size_remain -= wc;
@@ -102,39 +142,64 @@ void *reader_func(void *p)
 
 		free(qbuf);
 		qbuf = NULL;
+		
+		/* count up */
+		if (pthread_mutex_lock(&tdata->mutex) == 0) {
+			int written = buf.size - size_remain;
 
-		/* normal exit */
-		if ((f_exit && !p_queue->num_used) || file_err) {
-
-			buf = sbuf; /* default */
-
-#ifdef HAVE_LIBARIB25
-			if (use_b25) {
-				code = b25_finish(dec, &dbuf);
-				if(code < 0)
-					fprintf(stderr, "b25_finish failed\n");
-				else
-					buf = dbuf;
+			if (written > 0) {
+				tdata->w_byte += written;
 			}
-#endif
 
-			if (!file_err) {
-				wc = write(wfd, buf.data, (size_t)buf.size);
-				if (wc < 0) {
-					perror("write");
-					file_err = 1;
-					pthread_kill(signal_thread, errno == EPIPE ? SIGPIPE : SIGUSR2);
-				}
-			}
+			pthread_mutex_unlock(&tdata->mutex);
+		}
+
+		/* cannot write file */
+		if (file_err) {
 
 			break;
 		}
 	} /* while (1) */
 
-	time_t cur_time;
-	time(&cur_time);
-	fprintf(stderr, "Recorded %dsec\n", (int)(cur_time - tdata->start_time));
+end:
+
+#ifdef HAVE_LIBARIB25
+	if (use_b25) {
+		code = b25_finish(decoder, &dbuf);
+		if (code < 0) {
+			tdata->status = READER_EXIT_EB25FINISH;
+		}
+	}
+#endif
+
+	/* close output file */
+	if (wfd > 0 && !opts->use_stdout) {
+		fsync(wfd);
+		close(wfd);
+	}
+
+#ifdef HAVE_LIBARIB25
+	/* release decoder */
+	if (decoder != NULL) {
+		b25_shutdown(decoder);
+	}
+#endif
+
+	if (pthread_mutex_lock(&tdata->mutex) == 0) {
+		tdata->alive = 0;
+		pthread_mutex_unlock(&tdata->mutex);
+	}
 
 	return NULL;
+}
+
+void reader_show_error(enum reader_exit_status s)
+{
+	switch (s) {
+	case READER_EXIT_EINIT_DECODER:
+		fprintf(stderr, "Error: Cannot start b25 decoder\n");
+		fprintf(stderr, "       Fall back to encrypted recording\n");
+		break;
+	}
 }
 

@@ -18,30 +18,27 @@
 #include <stdlib.h>
 #include <string.h>
 #include <signal.h>
-#include <stdbool.h>
 
-#include <fcntl.h>
+#include <errno.h>
 #include <getopt.h>
-#include <libgen.h>
-#include <pthread.h>
 #include <unistd.h>
 
+#include <sys/epoll.h>
+#include <sys/timerfd.h>
+#include <sys/signalfd.h>
+
+#include "recdvb.h"
+
 #include "recdvbcore.h"
-#include "mkpath.h"
 #include "time.h"
 #include "queue.h"
 #include "reader.h"
 #include "preset.h"
 #include "version.h"
 
-#include "recdvb.h"
-
-/* globals */
-bool f_exit = false;
-
-/*
- * for options
- */
+#define NEVENTS 32
+#define TUNE_TIMEOUT 5
+#define READ_TIMEOUT 5
 
 static const char short_options[] = "br:smn:d:hvi:t:c";
 static const struct option long_options[] = {
@@ -172,6 +169,16 @@ static int parse_options(struct recdvb_options *opts, int argc, char **argv)
 		}
 	}
 
+	if (help) {
+		show_help(argv);
+		return 1;
+	}
+
+	if (version) {
+		show_version(argv);
+		return 1;
+	}
+
 	if (argc - optind < 3) {
 		fprintf(stderr, "Error: Some required parameters are missing!\n");
 		fprintf(stderr, "       Try '%s --help' for more information.\n", argv[0]);
@@ -182,18 +189,8 @@ static int parse_options(struct recdvb_options *opts, int argc, char **argv)
 	opts->channel = argv[optind];
 	opts->recsecstr = argv[optind + 1];
 	opts->destfile = argv[optind + 2];
-
-	if (help) {
-		show_help(argv);
-		return 1;
-	}
-
-	if (version) {
-		show_version(argv);
-		return 1;
-	}
 	
-	// check options
+	/* check options */
 	if (opts->destfile && !strcmp("-", opts->destfile)) {
 		opts->use_stdout = true;
 	}
@@ -248,96 +245,42 @@ void show_user_input(struct recdvb_options *opts)
 #endif
 }
 
-static void cleanup(thread_data *tdata)
-{
-	f_exit = true;
-
-	pthread_cond_signal(&tdata->queue->cond_avail);
-	pthread_cond_signal(&tdata->queue->cond_used);
-}
-
-/* will be signal handler thread */
-static void * process_signals(void *t)
-{
-	sigset_t waitset;
-	int sig;
-	thread_data *tdata = (thread_data *)t;
-
-	sigemptyset(&waitset);
-	sigaddset(&waitset, SIGPIPE);
-	sigaddset(&waitset, SIGINT);
-	sigaddset(&waitset, SIGTERM);
-	sigaddset(&waitset, SIGUSR1);
-	sigaddset(&waitset, SIGUSR2);
-
-	sigwait(&waitset, &sig);
-
-	switch (sig) {
-	case SIGPIPE:
-		fprintf(stderr, "\nSIGPIPE received. cleaning up...\n");
-		cleanup(tdata);
-		break;
-	case SIGINT:
-		fprintf(stderr, "\nSIGINT received. cleaning up...\n");
-		cleanup(tdata);
-		break;
-	case SIGTERM:
-		fprintf(stderr, "\nSIGTERM received. cleaning up...\n");
-		cleanup(tdata);
-		break;
-	case SIGUSR1: /* normal exit*/
-		cleanup(tdata);
-		break;
-	case SIGUSR2: /* error */
-		fprintf(stderr, "Detected an error. cleaning up...\n");
-		cleanup(tdata);
-		break;
-	}
-
-	return NULL; /* dummy */
-}
-
-static void init_signal_handlers(pthread_t *signal_thread, thread_data *tdata)
-{
-	sigset_t blockset;
-
-	sigemptyset(&blockset);
-	sigaddset(&blockset, SIGPIPE);
-	sigaddset(&blockset, SIGINT);
-	sigaddset(&blockset, SIGTERM);
-	sigaddset(&blockset, SIGUSR1);
-	sigaddset(&blockset, SIGUSR2);
-
-	if (pthread_sigmask(SIG_BLOCK, &blockset, NULL)) {
-		fprintf(stderr, "pthread_sigmask() failed.\n");
-	}
-
-	pthread_create(signal_thread, NULL, process_signals, tdata);
-}
-
 int main(int argc, char **argv)
 {
-	int rc;
-	time_t cur_time;
-	pthread_t signal_thread;
-	pthread_t reader_thread;
-	QUEUE_T *p_queue = create_queue(MAX_QUEUE);
+	int i, rc;
+	int fefd = -1;
+	int dmxfd = -1;
+	int dvrfd = -1;
+	int f_exit = 0;
+	int tuned = 0;
+	uint64_t r_byte = 0, p_r_byte = 0;
+	int notune_count = 0;
+	int noread_count = 0;
+
+	time_t cur_time, start_time;
 	BUFSZ   *bufptr;
-	static thread_data tdata;
-	struct recdvb_options opts;
+	static struct recdvb_options opts;
+
+	/* for epoll */
+	int epfd = -1;
+	int nfds = 0;
+	struct epoll_event ev, evs[NEVENTS];
+
+	/* for signalfd */
+	int sfd = -1;
+	sigset_t mask;
+
+	/* for timerfd */
+	int tfd = -1;
+	struct itimerspec interval = {{1, 0}, {1, 0}};
+
+	/* for thread */
+	pthread_t reader_thread;
+	static thread_data tdata = {
+	};
+	QUEUE_T *p_queue = create_queue(MAX_QUEUE);
 
 	/* default value */
-	tdata.lnb = 0;
-	tdata.tfd = -1;
-
-#ifdef HAVE_LIBARIB25
-	decoder *decoder = NULL;
-	decoder_options dopt = {
-		4,  /* round */
-		0,  /* strip */
-		0   /* emm */
-	};
-#endif
 
 	rc = parse_options(&opts, argc, argv);
 	if (rc == -1) {
@@ -349,113 +292,297 @@ int main(int argc, char **argv)
 
 	show_user_input(&opts);
 
-	/* open input tuner */
-	if (tune(opts.channel, &tdata, opts.dev_num, opts.tsid) != 0) {
-		fprintf(stderr, "Error: tuning failed.\n");
+	/* create epoll event fd */
+	epfd = epoll_create(NEVENTS);
+	if (epfd == -1)
+	{
+		fprintf(stderr, "Error: failed to call epoll_create. (errno=%d)\n", errno);
+		goto end;
 	}
 
-	/* open output file */
-	if (opts.use_stdout) {
-		tdata.wfd = 1; /* stdout */
-	} else {
-		int status;
-		char *path = strdup(opts.destfile);
-		char *dir = dirname(path);
-		status = mkpath(dir, 0777);
-		if (status == -1) {
-			fprintf(stderr, "Error: mkpath failed.\n");
-		}
-		free(path);
-
-		tdata.wfd = open(opts.destfile, (O_RDWR | O_CREAT | O_TRUNC), 0666);
-		if (tdata.wfd < 0) {
-			fprintf(stderr, "Error: Cannot open output file.\n");
-			return 1;
-		}
+	/* create signal fd */
+	sigemptyset(&mask);
+	sigaddset(&mask, SIGINT);
+	sigaddset(&mask, SIGPIPE);
+	sigaddset(&mask, SIGTERM);
+	sigprocmask(SIG_BLOCK, &mask, NULL);
+	sfd = signalfd(-1, &mask, 0);
+	if (sfd == -1) {
+		fprintf(stderr, "Error: cannot create signalfd. (errno=%d)\n", errno);
+		goto end;
 	}
 
-#ifdef HAVE_LIBARIB25
-	/* initialize decoder */
-	if (opts.b25) {
-		decoder = b25_startup(&dopt);
-		if (!decoder) {
-			fprintf(stderr, "Error: Cannot start b25 decoder\n");
-			fprintf(stderr, "       Fall back to encrypted recording\n");
-			opts.b25 = false;
-		}
+	/* add epoll event source: signal */
+	ev.data.fd = sfd;
+	ev.events = EPOLLIN;
+	if (epoll_ctl(epfd, EPOLL_CTL_ADD, sfd, &ev) == -1) {
+		fprintf(stderr, "Error: cannot add source signal fd to epoll. (errno=%d)\n", errno);
+		goto end;
 	}
-#endif
+	
+	/* create timer fd */
+	tfd = timerfd_create(CLOCK_REALTIME, 0);
+	if (tfd == -1) {
+		fprintf(stderr, "Error: cannot create timerfd. (errno=%d)\n", errno);
+		goto end;
+	}
+
+	/* set timer */
+	if (timerfd_settime(tfd, 0, &interval, NULL) == -1) {
+		fprintf(stderr, "Error: cannot set interval time. (errno=%d)\n", errno);
+		goto end;
+	}
+
+	/* add epoll event source: timer */
+	ev.data.fd = tfd;
+	ev.events = EPOLLIN;
+	if (epoll_ctl(epfd, EPOLL_CTL_ADD, tfd, &ev) == -1) {
+		fprintf(stderr, "Error: cannot add source timer fd to epoll. (errno=%d)\n", errno);
+		goto end;
+	}
 
 	/* prepare thread data */
+	tdata.opts = &opts;
+	tdata.alive = 1;
 	tdata.queue = p_queue;
-#ifdef HAVE_LIBARIB25
-	tdata.decoder = decoder;
-#endif
-	/* spawn signal handler thread */
-	init_signal_handlers(&signal_thread, &tdata);
+	tdata.status = READER_EXIT_NOERROR;
+	tdata.w_byte = 0;
+	pthread_mutex_init(&tdata.mutex, NULL);
 
 	/* spawn reader thread */
-	tdata.signal_thread = signal_thread;
 	pthread_create(&reader_thread, NULL, reader_func, &tdata);
 
-	fprintf(stderr, "Info: Recording...\n");
+	/* open frontend */
+	fefd = open_frontend(opts.dev_num);
+	if (fefd == -1) {
+		goto end;
+	}
 
-	time(&tdata.start_time);
+	/* add epoll event source: dvb frontend */
+	ev.data.fd = fefd;
+	ev.events = EPOLLIN;
+	if (epoll_ctl(epfd, EPOLL_CTL_ADD, fefd, &ev) == -1) {
+		fprintf(stderr, "Error: Cannot add source dvb frontend fd to epoll. (errno=%d)\n", errno);
+		goto end;
+	}
 
-	/* read from tuner */
-	while (1) {
-		if (f_exit) break;
+	/* tune */
+	if(frontend_tune(fefd, opts.channel, opts.tsid, opts.lnb) != 0) {
+		goto end;
+	}
 
-		time(&cur_time);
-		bufptr = malloc(sizeof(BUFSZ));
-		if (!bufptr) {
-			f_exit = true;
-			break;
-		}
-		bufptr->size = read(tdata.tfd, bufptr->buffer, MAX_READ_SIZE);
-		if (bufptr->size <= 0) {
-			if ((cur_time - tdata.start_time) >= opts.recsec && opts.recsec != -1) {
-				f_exit = true;
-				enqueue(p_queue, NULL);
+	/* open dvb demux */
+	dmxfd = open_demux(opts.dev_num);
+	if (dmxfd == -1) {
+		goto end;
+	}
+
+	/* open dvb dvr */
+	dvrfd = open_dvr(opts.dev_num);
+	if (dvrfd == -1) {
+		goto end;
+	}
+
+	/* add epoll event source: dvb dvr */
+	ev.data.fd = dvrfd;
+	ev.events = EPOLLIN;
+	if (epoll_ctl(epfd, EPOLL_CTL_ADD, dvrfd, &ev) == -1) {
+		fprintf(stderr, "Error: Cannot add source dvb dvr fd to epoll. (errno=%d)\n", errno);
+		goto end;
+	}
+
+	time(&start_time);
+
+	/* event loop */
+	while (!f_exit) {
+
+		/* check thread alive */
+		if (pthread_mutex_trylock(&tdata.mutex) == 0) {
+			if (tdata.alive == 0) {
+				f_exit = 1;
+			}
+			pthread_mutex_unlock(&tdata.mutex);
+
+			if (f_exit) {
+				fprintf(stderr, "Info: reader thread finished.\n");
 				break;
-			} else {
-				free(bufptr);
-				continue;
 			}
 		}
-		enqueue(p_queue, bufptr);
+		
+		/* wait events */
+		nfds = epoll_wait(epfd, evs, NEVENTS, -1);
+		if (nfds < 0) {
+			fprintf(stderr, "Error: epoll_wait failed. (errno=%d)\n", errno);
+			break;
+		} else if (nfds == 0) {
+			continue;
+		}
 
 		/* stop recording */
 		time(&cur_time);
-		if ((cur_time - tdata.start_time) >= opts.recsec && opts.recsec != -1) {
+		if ((cur_time - start_time) >= opts.recsec && opts.recsec != -1) {
 			break;
+		}
+
+		/* event proc */
+		for (i = 0; i < nfds; ++i) {
+
+			if (evs[i].data.fd == sfd) {
+				/* signal */
+				struct signalfd_siginfo info = {0};
+				read(sfd, &info, sizeof(info));
+
+				fprintf(stderr, "\nInfo: Catch signal.\n");
+				f_exit = 1;
+				break;
+			} else if (evs[i].data.fd == tfd) {
+				/* timer */
+				uint64_t exp;
+				read(tfd, &exp, sizeof(uint64_t));
+
+				if (tuned == 0) {
+					/* check timeout */
+					notune_count++;
+					if (notune_count < TUNE_TIMEOUT) {
+						continue;
+					}
+					f_exit = 1;
+					fprintf(stderr, "Error: Tune timeout.\n");
+					break;
+				} else {
+					uint64_t w_byte = 0;
+					/* show stats */
+					frontend_show_stats(fefd);
+					if (pthread_mutex_trylock(&tdata.mutex) == 0) {
+						w_byte = tdata.w_byte;
+						pthread_mutex_unlock(&tdata.mutex);
+					}
+					fprintf(stderr, "      Read %lubyte, Write %lubyte\n", r_byte, w_byte);
+
+					/* check timeout */
+					if (p_r_byte == r_byte) {
+						noread_count++;
+						if (noread_count < READ_TIMEOUT) {
+							continue;
+						}
+						f_exit = 1;
+						fprintf(stderr, "Error: Read timeout.\n");
+						break;
+					} else {
+						noread_count = 0;
+						p_r_byte = r_byte;
+					}
+				}
+			} else if (evs[i].data.fd == fefd) {
+				/* frontend */
+				if (tuned != 0) {
+					continue;
+				}
+				if (frontend_locked(fefd) != 0) {
+					continue;
+				}
+				
+				tuned = 1;
+
+				/* demux start */
+				if (demux_start(dmxfd) != 0) {
+					f_exit = 1;
+					fprintf(stderr, "Error: Cannot start demux.\n");
+					break;
+				}
+
+				/* remove from epoll */
+				if (epoll_ctl(epfd, EPOLL_CTL_DEL, fefd, NULL) != 0) {
+					f_exit = 1;
+					fprintf(stderr, "Error: Remove fd from epoll failed. (errno=%d)\n", errno);
+					break;
+				}
+
+			} else if (evs[i].data.fd == dvrfd) {
+				/* dvr */
+				if (!(evs[i].events & EPOLLIN)) {
+					continue;
+				}
+				bufptr = malloc(sizeof(BUFSZ));
+				if (!bufptr) {
+					f_exit = 1;
+					fprintf(stderr, "Error: Cannot allocate buffer memory.\n");
+					break;
+				}
+				bufptr->size = read(dvrfd, bufptr->buffer, MAX_READ_SIZE);
+				if (bufptr->size <= 0) {
+					free(bufptr);
+					continue;
+				}
+				if (enqueue(p_queue, bufptr) != 0) {
+					/* enqueue timeout */
+					free(bufptr);
+					f_exit = 1;
+					fprintf(stderr, "Error: queue is full. timeout.\n");
+					break;
+
+				}
+				r_byte += bufptr->size;
+			}
+		}
+	} /* while (!f_exit) */
+
+	fprintf(stderr, "Info: Recorded %dsec\n", (int)(cur_time - start_time));
+
+end:
+
+	/* tell exit to thread. */
+	while (enqueue(p_queue, NULL) != 0) {
+		/* when enqueue timeout, check thread alive */
+		int thread_alive = 1;
+		if (pthread_mutex_trylock(&tdata.mutex) == 0) {
+			if (tdata.alive == 0) {
+				thread_alive = 0;
+			}
+			pthread_mutex_unlock(&tdata.mutex);
+
+			if (thread_alive == 0) {
+				break;
+			}
 		}
 	}
 
-	pthread_kill(signal_thread, SIGUSR1);
+	/* close epoll */
+	if (epfd != -1) {
+		close(epfd);
+	}
+
+	/* close dvr/dmx/frontend anyway */
+	if (dvrfd != -1) {
+		close(dvrfd);
+	}
+
+	if (dmxfd != -1) {
+		close(dmxfd);
+	}
+
+	if (fefd != -1) {
+		close(fefd);
+	}
+	
+	/* close timerfd */
+	if (tfd != -1) {
+		close(tfd);
+	}
+
+	/* close signalfd */
+	if (sfd != -1) {
+		close(sfd);
+	}
 
 	/* wait for threads */
 	pthread_join(reader_thread, NULL);
-	pthread_join(signal_thread, NULL);
-
-	/* close tuner */
-	close_tuner(&tdata);
 
 	/* release queue */
 	destroy_queue(p_queue);
 
-	/* close output file */
-	if (!opts.use_stdout) {
-		fsync(tdata.wfd);
-		close(tdata.wfd);
-	}
-
-#ifdef HAVE_LIBARIB25
-	/* release decoder */
-	if (opts.b25) {
-		b25_shutdown(decoder);
-	}
-#endif
+	/* show status */
+	fprintf(stderr, "Info: Read %lubyte, Write %lubyte\n", r_byte, tdata.w_byte);
 
 	return 0;
 }

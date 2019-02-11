@@ -19,20 +19,16 @@
 
 #include <stdbool.h>
 
-#define NUM_BSDEV                        8
-#define NUM_ISDB_T_DEV                   8
-#define CHTYPE_SATELLITE                 0 /* satellite digital */
-#define CHTYPE_GROUND                    1 /* terrestrial digital */
 #define MAX_QUEUE                     8192
-#define WRITE_SIZE       (1024 * 1024 * 2)
+// #define WRITE_SIZE       (1024 * 1024 * 2)
 
 struct recdvb_options {
-#ifdef HAVE_LIBARIB25
+	/* for b25 */
 	bool b25;
 	bool strip;
 	bool emm;
 	int round;
-#endif
+
 	int lnb;
 	int dev_num;
 	unsigned int tsid;

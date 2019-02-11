@@ -40,10 +40,10 @@ typedef struct _QUEUE_T {
 	BUFSZ *buffer[1];          // buffer pointer
 } QUEUE_T;
 
-QUEUE_T * create_queue(size_t size);
+QUEUE_T *create_queue(size_t size);
 void destroy_queue(QUEUE_T *p_queue);
-void enqueue(QUEUE_T *p_queue, BUFSZ *data);
-BUFSZ *dequeue(QUEUE_T *p_queue);
+int enqueue(QUEUE_T *p_queue, BUFSZ *data);
+int dequeue(QUEUE_T *p_queue, BUFSZ **data);
 
 #endif
 

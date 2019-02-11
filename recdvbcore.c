@@ -14,45 +14,29 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <errno.h>
+#include <stdint.h>
 
-#include <sys/poll.h>
-#include <sys/ioctl.h>
 #include <fcntl.h>
 #include <unistd.h>
+
+#include <sys/ioctl.h>
 
 #include <linux/dvb/dmx.h>
 #include <linux/dvb/frontend.h>
 
-#include "queue.h"
+// #include "queue.h"
 
 #include "recdvbcore.h"
 
 #define ISDBTYPE_ISDBT 0
 #define ISDBTYPE_ISDBS 1
 
-static int fefd = 0;
-static int dmxfd = 0;
-static int lnb = 0;
-static int isdbtype = 0;
+#define DEVNAME_BUFFER 32
 
-static int set_lnb_off(const thread_data *tdata)
-{
-	if (tdata->lnb == 0) return 0;
-	if (lnb == 0) return 0;
-	if (fefd <= 0) return 0;
-
-	if (ioctl(fefd, FE_SET_VOLTAGE, SEC_VOLTAGE_OFF) == -1) {
-		perror("ioctl FE_SET_VOLTAGE failed.\n");
-		return 1;
-	}
-	lnb = 0;
-	return 0;
-}
-
-static int is_isdb()
+static int get_isdbtype(int fefd)
 {
 	struct dtv_properties props;
 	struct dtv_property prop[1];
@@ -82,25 +66,160 @@ static int is_isdb()
 	return -1;
 }
 
-void close_tuner(thread_data *tdata)
+static int set_isdb_t_frequency(const char *channel, struct dtv_property *prop)
 {
-	if (fefd > 0) {
-		set_lnb_off(tdata);
-		close(fefd);
-		fefd = 0;
-	}
-	if (dmxfd > 0) {
-		close(dmxfd);
-		dmxfd = 0;
-	}
-	if (tdata->tfd == -1)
-		return;
+	uint32_t fe_freq;
 
-	close(tdata->tfd);
-	tdata->tfd = -1;
+	prop->cmd = DTV_FREQUENCY;
+
+	if ((fe_freq = (uint32_t)atoi(channel)) == 0) {
+		fprintf(stderr, "channel is not number\n");
+		return 1;
+	}
+
+	prop->u.data = (fe_freq * 6000 + 395143) * 1000;
+	fprintf(stderr,"tuning to %d kHz\n",prop->u.data / 1000);
+
+	return 0;
 }
 
-void show_frontend_info(void)
+static int set_isdb_s_frequency(const char *channel, struct dtv_property *prop)
+{
+	uint32_t fe_freq;
+
+	prop->cmd = DTV_FREQUENCY;
+
+	if (((channel[0] == 'b') || (channel[0] == 'B')) &&
+	    ((channel[1] == 's') || (channel[1] == 'S'))) {
+		if ((fe_freq = (uint32_t)atoi(channel + 2)) == 0) {
+			fprintf(stderr, "channel is not BSnn\n\tnn=numeric\n");
+			return 1;
+		}
+		prop->u.data = fe_freq * 19180 + 1030300;
+	} else if (((channel[0] == 'n')||(channel[0] == 'N')) &&
+		   ((channel[1] == 'd')||(channel[1] == 'D'))) {
+		if ((fe_freq = (uint32_t)atoi(channel + 2)) == 0) {
+			fprintf(stderr, "channel is not NDnn\n\tnn=numeric\n");
+			return 1;
+		}
+		prop->u.data = fe_freq * 20000 + 1573000;
+	} else {
+		fprintf(stderr, "channel is invalid\n");
+		return 1;
+	}
+
+	fprintf(stderr,"tuning to %d MHz\n",prop->u.data / 1000);
+	return 0;
+}
+
+static int frontend_show_info(int fefd)
+{
+	struct dvb_frontend_info fe_info;
+
+	if (ioctl(fefd, FE_GET_INFO, &fe_info) != 0)
+	{
+		fprintf(stderr, "Error: FE_GET_INFO failed. (errno=%d)\n", errno);
+		return -1;
+	}
+
+	/* show info */
+	fprintf(stderr, "Info: DVB card name \"%s\".\n", fe_info.name);
+	fprintf(stderr, "      Freq min %u, max %u.\n", fe_info.frequency_min, fe_info.frequency_max);
+	fprintf(stderr, "      Freq stepsize %u, tolerance %u.\n", fe_info.frequency_stepsize, fe_info.frequency_tolerance);
+	fprintf(stderr, "      Symbol Rate min %u, max %u, tolerance %u.\n", fe_info.symbol_rate_min, fe_info.symbol_rate_max, fe_info.symbol_rate_tolerance);
+	fprintf(stderr, "      fe_cups 0x%x.\n", fe_info.caps);
+	
+	return 0;
+}
+
+int open_frontend(int dev_num)
+{
+	int fefd;
+	int isdbtype;
+	char device[DEVNAME_BUFFER] = {0};
+
+	sprintf(device, "/dev/dvb/adapter%d/frontend0", dev_num);
+	fefd = open(device, O_RDWR);
+	if (fefd < 0) {
+		fprintf(stderr, "Error: Cannot open dvb frontend. (errno=%d)\n", errno);
+		return -1;
+	}
+	
+	fprintf(stderr, "Info: DVB frontend = %s\n", device);
+
+	/* check isdb type */
+	isdbtype = get_isdbtype(fefd);
+
+	if ((isdbtype != ISDBTYPE_ISDBT) && (isdbtype != ISDBTYPE_ISDBS)) {
+		fprintf(stderr, "Error: tuner type is not ISDB-T/ISDB-S.\n");
+		close(fefd);
+		return -1;
+	}
+	fprintf(stderr, "Info: Tuner type is %s\n", isdbtype == ISDBTYPE_ISDBT ? "ISDB-T" : "ISDB-S");
+
+	if (frontend_show_info(fefd) != 0) {
+		close(fefd);
+		return -1;
+	}
+
+	return fefd;
+}
+
+int frontend_tune(int fefd, char *channel, unsigned int tsid, int lnb)
+{
+	int isdbtype;
+	struct dtv_property prop[4];
+	struct dtv_properties props;
+
+	/* specify command */
+	props.num = 0;
+	props.props = prop;
+
+	isdbtype = get_isdbtype(fefd);
+
+	if (isdbtype == ISDBTYPE_ISDBT) {
+		/* frequency */
+		if (set_isdb_t_frequency(channel, &prop[props.num]) != 0) {
+			return -1;
+		}
+		props.num++;
+	} else if (isdbtype == ISDBTYPE_ISDBS) {
+		/* LNB */
+		prop[props.num].cmd = DTV_VOLTAGE;
+		if (lnb == 15) {
+			prop[props.num].u.data = SEC_VOLTAGE_18;
+		} else if (lnb == 11) {
+			prop[props.num].u.data = SEC_VOLTAGE_13;
+		} else {
+			prop[props.num].u.data = SEC_VOLTAGE_OFF;
+		}
+		props.num++;
+
+		/* frequency */
+		if (set_isdb_s_frequency(channel, &prop[props.num]) != 0) {
+			return -1;
+		}
+		props.num++;
+
+		/* TSID */
+		prop[props.num].cmd = DTV_STREAM_ID;
+		prop[props.num].u.data = tsid;
+		props.num++;
+	}
+
+	prop[props.num].cmd = DTV_TUNE;
+	props.num++;
+
+
+	if (ioctl(fefd, FE_SET_PROPERTY, &props) == -1) {
+		fprintf(stderr, "Error: FE_SET_PROPERTY failed. (errno=%d)\n", errno);
+		return -1;
+	}
+
+	return 0;
+}
+
+void frontend_show_stats(int fefd)
 {
 	struct dtv_property prop[4];
 	struct dtv_properties props;
@@ -151,172 +270,37 @@ void show_frontend_info(void)
 	}
 }
 
-static int open_tuner(int dev_num, struct dvb_frontend_info *fe_info)
+int frontend_locked(int fefd)
 {
-	char device[32] = {0};
-
-	if (fefd == 0) {
-		sprintf(device, "/dev/dvb/adapter%d/frontend0", dev_num);
-		fefd = open(device, O_RDWR);
-		if (fefd < 0) {
-			fprintf(stderr, "cannot open frontend device\n");
-			fefd = 0;
-			return 1;
-		}
-		fprintf(stderr, "device = %s\n", device);
-	}
-
-	if ((ioctl(fefd, FE_GET_INFO, fe_info) < 0)) {
-		fprintf(stderr, "FE_GET_INFO failed\n");
-		return 1;
-	}
-
-	isdbtype = is_isdb();
-
-	if ((isdbtype != ISDBTYPE_ISDBT) && (isdbtype != ISDBTYPE_ISDBS)) {
-		fprintf(stderr, "Error: tuner type is not ISDB-T/ISDB-S.\n");
-		return 1;
-	}
-
-	return 0;
-}
-
-static int set_ofdm_frequency(const char *channel, struct dtv_property *prop)
-{
-	uint32_t fe_freq;
-
-	prop->cmd = DTV_FREQUENCY;
-
-	if ((fe_freq = (uint32_t)atoi(channel)) == 0) {
-		fprintf(stderr, "channel is not number\n");
-		return 1;
-	}
-
-	prop->u.data = (fe_freq * 6000 + 395143) * 1000;
-	fprintf(stderr,"tuning to %d kHz\n",prop->u.data / 1000);
-
-	return 0;
-}
-
-static int set_qpsk_frequency(const char *channel, struct dtv_property *prop)
-{
-	uint32_t fe_freq;
-
-	prop->cmd = DTV_FREQUENCY;
-
-	if (((channel[0] == 'b') || (channel[0] == 'B')) &&
-	    ((channel[1] == 's') || (channel[1] == 'S'))) {
-		if ((fe_freq = (uint32_t)atoi(channel + 2)) == 0) {
-			fprintf(stderr, "channel is not BSnn\n\tnn=numeric\n");
-			return 1;
-		}
-		prop->u.data = fe_freq * 19180 + 1030300;
-	} else if (((channel[0] == 'n')||(channel[0] == 'N')) &&
-		   ((channel[1] == 'd')||(channel[1] == 'D'))) {
-		if ((fe_freq = (uint32_t)atoi(channel + 2)) == 0) {
-			fprintf(stderr, "channel is not NDnn\n\tnn=numeric\n");
-			return 1;
-		}
-		prop->u.data = fe_freq * 20000 + 1573000;
-	} else {
-		fprintf(stderr, "channel is invalid\n");
-		return 1;
-	}
-
-	fprintf(stderr,"tuning to %d MHz\n",prop->u.data / 1000);
-	return 0;
-}
-
-int tune(char *channel, thread_data *tdata, int dev_num, unsigned int tsid)
-{
-	struct dtv_property prop[4];
-	struct dtv_properties props;
-	struct dvb_frontend_info fe_info;
-	int rc, i;
 	unsigned int status;
+	
+	if (ioctl(fefd, FE_READ_STATUS, &status) == -1) {
+		return -1;
+	}
+	if (status & FE_HAS_LOCK) {
+		return 0;
+	}
+
+	return 1;
+}
+
+int open_demux(int dev_num)
+{
+	int dmxfd = -1;
+	char device[DEVNAME_BUFFER] = {0};
+
+	sprintf(device, "/dev/dvb/adapter%d/demux0", dev_num);
+	if ((dmxfd = open(device, O_RDWR)) < 0) {
+		fprintf(stderr, "Error: Cannot open demux device. (errno=%d)\n", errno);
+		return -1;
+	}
+
+	return dmxfd;
+}
+
+int demux_start(int dmxfd)
+{
 	struct dmx_pes_filter_params filter;
-	char device[32];
-
-	/* open tuner */
-	rc = open_tuner(dev_num, &fe_info);
-	if (rc != 0) return 1;
-
-	fprintf(stderr,"Using DVB card \"%s\"\n",fe_info.name);
-
-	/* specify command */
-	props.num = 0;
-	if (isdbtype == ISDBTYPE_ISDBT) {
-		/* ISDB-T */
-		tdata->lnb = 0; /* lnb is unavailable */
-		rc = set_ofdm_frequency(channel, &prop[props.num]);
-		if (rc != 0) return 1;
-		props.num++;
-	} else {
-		/* ISDB-S */
-		if (lnb == 0) {
-			lnb = 1;
-			prop[props.num].cmd = DTV_VOLTAGE;
-			switch (tdata->lnb) {
-			case 2:
-				prop[props.num].u.data = SEC_VOLTAGE_18;
-				break;
-			case 1:
-				prop[props.num].u.data = SEC_VOLTAGE_13;
-				break;
-			default:
-				prop[props.num].u.data = SEC_VOLTAGE_OFF;
-				break;
-			}
-			props.num++;
-		}
-		rc = set_qpsk_frequency(channel, &prop[props.num]);
-		if (rc != 0) return 1;
-		props.num++;
-
-		/* set tsid */
-		prop[props.num].cmd = DTV_STREAM_ID;
-		prop[props.num].u.data = tsid;
-		props.num++;
-	}
-
-	prop[props.num].cmd = DTV_TUNE;
-	props.num++;
-
-	props.props = prop;
-
-	if (ioctl(fefd, FE_SET_PROPERTY, &props) == -1) {
-		perror("ioctl FE_SET_PROPERTY failed.\n");
-		return 1;
-	}
-
-	/* wait tuning complete */
-	fprintf(stderr, "Info: Tuning\n");
-
-	for (i = 0; i < 50; i++) {
-		if (ioctl(fefd, FE_READ_STATUS, &status) == -1) {
-			fprintf(stderr, "Error: FE_READ_STATUS failed. (errno=%d)\n", errno);
-			return -1;
-		}
-
-		if(status & FE_HAS_LOCK) break;
-		usleep(100000); // sleep 0.1s
-	}
-
-	if((status & FE_HAS_LOCK) == 0) {
-		fprintf(stderr, "Error: Cannot lock to the signal on the given channel.\n");
-		return 1;
-	}
-
-	fprintf(stderr, "Info: Tuning ok.\n");
-
-	if (dmxfd == 0) {
-		sprintf(device, "/dev/dvb/adapter%d/demux0", dev_num);
-		if ((dmxfd = open(device, O_RDWR)) < 0) {
-			dmxfd = 0;
-			fprintf(stderr, "cannot open demux device\n");
-			return 1;
-		}
-	}
 
 	// 0x2000 pass all pids
 	filter.pid = 0x2000;
@@ -325,26 +309,24 @@ int tune(char *channel, thread_data *tdata, int dev_num, unsigned int tsid)
 	filter.pes_type = DMX_PES_VIDEO;
 	filter.flags = DMX_IMMEDIATE_START;
 	if (ioctl(dmxfd, DMX_SET_PES_FILTER, &filter) == -1) {
-		fprintf(stderr,"FILTER %i: ", filter.pid);
-		perror("ioctl DMX_SET_PES_FILTER");
-		close(dmxfd);
-		dmxfd = 0;
-		return 1;
+		fprintf(stderr,"Error: DMX_SET_PES_FILTER failed. (errno=%d)\n", errno);
+		return -1;
 	}
 
-	if (tdata->tfd < 0) {
-		sprintf(device, "/dev/dvb/adapter%d/dvr0", dev_num);
-		if ((tdata->tfd = open(device, O_RDONLY)) < 0) {
-			fprintf(stderr, "cannot open dvr device\n");
-			close(dmxfd);
-			dmxfd = 0;
-			return 1;
-		}
+	return 0;
+}
+
+int open_dvr(int dev_num)
+{
+	int dvrfd = -1;
+	char device[DEVNAME_BUFFER] = {0};
+
+	sprintf(device, "/dev/dvb/adapter%d/dvr0", dev_num);
+	if ((dvrfd = open(device, O_RDONLY | O_NONBLOCK)) < 0) {
+		fprintf(stderr, "Error: Cannot open dvr device. (errno=%d)\n", errno);
+		return -1;
 	}
 
-	/* show signal strength */
-	show_frontend_info();
-
-	return 0; /* success */
+	return dvrfd;
 }
 

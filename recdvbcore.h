@@ -17,31 +17,18 @@
 #ifndef RECDVB_RECDVBCORE_H
 #define RECDVB_RECDVBCORE_H
 
-#include <time.h>
-#include <pthread.h>
+/* frontend */
+int open_frontend(int dev_num);
+int frontend_tune(int fefd, char *channel, unsigned int tsid, int lnb);
+void frontend_show_stats(int fefd);
+int frontend_locked(int fefd);
 
-#include "decoder.h"
-#include "queue.h"
+/* demux */
+int open_demux(int dev_num);
+int demux_start(int dmxfd);
 
-/* type definitions */
-typedef struct thread_data {
-	int tfd;  /* tuner fd */
-	int wfd;  /* output file fd */
-	int lnb;  /* LNB voltage */
-
-	time_t start_time;               //invariable
-
-	QUEUE_T *queue;                  //invariable
-	pthread_t signal_thread;         //invariable
-#ifdef HAVE_LIBARIB25
-	decoder *decoder;                //invariable
-#endif
-} thread_data;
-
-/* prototypes */
-int tune(char *channel, thread_data *tdata, int dev_num, unsigned int tsid);
-void close_tuner(thread_data *tdata);
-void calc_cn(void);
+/* dvr */
+int open_dvr(int dev_num);
 
 #endif
 
