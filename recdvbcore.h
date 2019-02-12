@@ -22,6 +22,7 @@ int open_frontend(int dev_num);
 int frontend_tune(int fefd, char *channel, unsigned int tsid, int lnb);
 void frontend_show_stats(int fefd);
 int frontend_locked(int fefd);
+void frontend_show_frequency(int fefd);
 
 /* demux */
 int open_demux(int dev_num);

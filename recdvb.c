@@ -548,6 +548,9 @@ int main(int argc, char **argv)
 					break;
 				}
 
+				/* show current frequency */
+				frontend_show_frequency(fefd);
+
 			} else if (evs[i].data.fd == dvrfd) {
 				/* dvr */
 				if (!(evs[i].events & EPOLLIN)) {

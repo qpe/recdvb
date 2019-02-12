@@ -73,12 +73,12 @@ static int set_isdb_t_frequency(const char *channel, struct dtv_property *prop)
 	prop->cmd = DTV_FREQUENCY;
 
 	if ((fe_freq = (uint32_t)atoi(channel)) == 0) {
-		fprintf(stderr, "channel is not number\n");
+		fprintf(stderr, "Error: channel is not number\n");
 		return 1;
 	}
 
 	prop->u.data = (fe_freq * 6000 + 395143) * 1000;
-	fprintf(stderr,"tuning to %d kHz\n",prop->u.data / 1000);
+	fprintf(stderr, "Info: Tuning to %d kHz\n", prop->u.data / 1000);
 
 	return 0;
 }
@@ -92,23 +92,23 @@ static int set_isdb_s_frequency(const char *channel, struct dtv_property *prop)
 	if (((channel[0] == 'b') || (channel[0] == 'B')) &&
 	    ((channel[1] == 's') || (channel[1] == 'S'))) {
 		if ((fe_freq = (uint32_t)atoi(channel + 2)) == 0) {
-			fprintf(stderr, "channel is not BSnn\n\tnn=numeric\n");
+			fprintf(stderr, "Error: channel is not BSnn (nn=numeric)\n");
 			return 1;
 		}
 		prop->u.data = fe_freq * 19180 + 1030300;
 	} else if (((channel[0] == 'n')||(channel[0] == 'N')) &&
 		   ((channel[1] == 'd')||(channel[1] == 'D'))) {
 		if ((fe_freq = (uint32_t)atoi(channel + 2)) == 0) {
-			fprintf(stderr, "channel is not NDnn\n\tnn=numeric\n");
+			fprintf(stderr, "Error: channel is not NDnn (nn=numeric)\n");
 			return 1;
 		}
 		prop->u.data = fe_freq * 20000 + 1573000;
 	} else {
-		fprintf(stderr, "channel is invalid\n");
+		fprintf(stderr, "Error: channel is invalid\n");
 		return 1;
 	}
 
-	fprintf(stderr,"tuning to %d MHz\n",prop->u.data / 1000);
+	fprintf(stderr, "Info: Tuning to %d MHz\n", prop->u.data / 1000);
 	return 0;
 }
 
@@ -282,6 +282,29 @@ int frontend_locked(int fefd)
 	}
 
 	return 1;
+}
+
+void frontend_show_frequency(int fefd)
+{
+	struct dtv_properties props;
+	struct dtv_property prop[1];
+
+	prop[0].cmd = DTV_FREQUENCY;
+	props.num = 1;
+	props.props = prop;
+
+	if (ioctl(fefd, FE_GET_PROPERTY, &props) != 0)
+	{
+		return;
+	}
+
+	if (get_isdbtype(fefd) == ISDBTYPE_ISDBT) {
+		fprintf(stderr, "Info: Tuned %d KHz.\n", prop[0].u.data / 1000);
+	} else {
+		fprintf(stderr, "Info: Tuned %d MHz.\n", prop[0].u.data / 1000);
+	}
+
+	return;
 }
 
 int open_demux(int dev_num)
