@@ -72,7 +72,7 @@ decoder *b25_startup(decoder_options *opt)
 	return dec;
 
 error:
-	fprintf(stderr, "%s\n", err);
+	fprintf(stderr, "Error: %s\n", err);
 	free(dec);
 	return NULL;
 }
@@ -92,13 +92,13 @@ int b25_decode(decoder *dec, ARIB_STD_B25_BUFFER *sbuf, ARIB_STD_B25_BUFFER *dbu
 
 	code = dec->b25->put(dec->b25, sbuf);
 	if (code < 0) {
-		fprintf(stderr, "b25->put failed\n");
+		fprintf(stderr, "Error: b25->put failed\n");
 		return code;
 	}
 
 	code = dec->b25->get(dec->b25, dbuf);
 	if (code < 0) {
-		fprintf(stderr, "b25->get failed\n");
+		fprintf(stderr, "Error: b25->get failed\n");
 		return code;
 	}
 
@@ -111,13 +111,13 @@ int b25_finish(decoder *dec, ARIB_STD_B25_BUFFER *dbuf)
 
 	code = dec->b25->flush(dec->b25);
 	if (code < 0) {
-		fprintf(stderr, "b25->flush failed\n");
+		fprintf(stderr, "Error: b25->flush failed\n");
 		return code;
 	}
 
 	code = dec->b25->get(dec->b25, dbuf);
 	if (code < 0) {
-		fprintf(stderr, "b25->get failed\n");
+		fprintf(stderr, "Error: b25->get failed\n");
 		return code;
 	}
 

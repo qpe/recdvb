@@ -66,6 +66,7 @@ void *reader_func(void *p)
 			tdata->status = READER_EXIT_EINIT_DECODER;
 			goto end;
 		}
+		fprintf(stderr, "Info: B25 startup successfully.\n");
 		use_b25 = 1;
 	}
 #endif
@@ -115,12 +116,12 @@ void *reader_func(void *p)
 		if (use_b25) {
 			code = b25_decode(decoder, &sbuf, &dbuf);
 			if (code < 0) {
-				fprintf(stderr, "b25_decode failed (code=%d).", code);
-				fprintf(stderr, " fall back to encrypted recording.\n");
+				fprintf(stderr, "Error: b25_decode failed (code=%d).\n", code);
+				fprintf(stderr, "       fall back to encrypted recording.\n");
 				use_b25 = 0;
-			}
-			else
+			} else {
 				buf = dbuf;
+			}
 		}
 #endif
 
