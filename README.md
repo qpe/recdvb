@@ -8,9 +8,11 @@ Based on recdvb published on http://cgi1.plala.or.jp/~sat/
 recdvb - command to record ISDB-T/S signals for linux DVB devices.
 Maintain for pt3 with mirakurun.
 
-The Defference between original:
+What is difference from original?
     - Remove network options
-    - support only DVBv5
+    - Support only DVBv5 API
+    - Show recording statistics
+    - Not handle SIGUSR1/SIGUSR2
 
 ## Alternative
 
