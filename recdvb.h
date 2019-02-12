@@ -40,7 +40,6 @@ struct recdvb_options {
 	unsigned int tsid;
 	char *destfile;
 	char *channel;
-	char *recsecstr;
 
 	int recsec;
 	bool use_stdout;

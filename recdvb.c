@@ -60,18 +60,22 @@ static const struct option long_options[] = {
 };
 
 static const char options_desc[] =
-"Options:\n"
+"Common options:\n"
+"  -d, --dev N:             Use DVB device /dev/dvb/adapterN\n"
+"  -h, --help:              Show this help\n"
+"  -v, --version:           Show version\n"
 #ifdef HAVE_LIBARIB25
+"\n"
+"B25 options:\n"
 "  -b, --b25:               Decrypt using BCAS card\n"
 "    -r, --round N:         Specify round number\n"
 "    -s, --strip:           Strip null stream\n"
 "    -m, --EMM:             Instruct EMM operation\n"
 #endif
-"  -d, --dev N:             Use DVB device /dev/dvb/adapterN\n"
-"  -n, --lnb voltage:       Specify LNB voltage (0, 11, 15)\n"
-"  -t, --tsid TSID:         Specify TSID in decimal or hex, hex begins '0x'\n"
-"  -h, --help:              Show this help\n"
-"  -v, --version:           Show version\n";
+"\n"
+"ISDB-S options:\n"
+"  -n, --lnb voltage:       Specify LNB voltage (0, 11, 15, default is 0)\n"
+"  -t, --tsid TSID:         Specify TSID in decimal or hex, hex begins '0x'\n";
 
 static void show_usage(char *cmd)
 {
@@ -119,15 +123,29 @@ static int parse_options(struct recdvb_options *opts, int argc, char **argv)
 	bool version = false;
 	bool validation = true;
 
+	char *endptr = NULL;
+	char *lnbstr = NULL;
+	char *tsidstr = NULL;
+	char *recsecstr = NULL;
+	char *dev_numstr = NULL;
+#ifdef HAVE_LIBARIB25
+	char *roundstr = NULL;
+#endif
+
 	/* set defaults */
 	opts->lnb = 0;
 	opts->dev_num = 0;
 	opts->tsid = 0;
 	opts->destfile = NULL;
 	opts->channel = NULL;
-	opts->recsecstr = NULL;
 	opts->recsec = 0;
 	opts->use_stdout = false;
+#ifdef HAVE_LIBARIB25
+	opts->b25 = false;
+	opts->strip = false;
+	opts->emm = false;
+	opts->round = 4;
+#endif
 
 	/* get option args */
 	while ((rc = getopt_long(argc, argv, short_options, long_options, &option_index)) != -1) {
@@ -143,7 +161,7 @@ static int parse_options(struct recdvb_options *opts, int argc, char **argv)
 			opts->emm = true;
 			break;
 		case 'r':
-			opts->round = atoi(optarg);
+			roundstr = optarg;
 			break;
 #endif
 		case 'h':
@@ -154,17 +172,13 @@ static int parse_options(struct recdvb_options *opts, int argc, char **argv)
 			break;
 		/* following options require argument */
 		case 'n':
-			opts->lnb = atoi(optarg);
+			lnbstr = optarg;
 			break;
 		case 'd':
-			opts->dev_num = atoi(optarg);
+			dev_numstr = optarg;
 			break;
 		case 't':
-			opts->tsid = (unsigned int)atoi(optarg);
-			/* hex */
-			if (strlen(optarg) > 2 && optarg[0] == '0' && (optarg[1] == 'X' || optarg[1] == 'x')) {
-				sscanf(optarg + 2, "%x", &opts->tsid);
-			}
+			tsidstr = optarg;
 			break;
 		}
 	}
@@ -187,32 +201,69 @@ static int parse_options(struct recdvb_options *opts, int argc, char **argv)
 
 	/* get no option args */
 	opts->channel = argv[optind];
-	opts->recsecstr = argv[optind + 1];
+	recsecstr = argv[optind + 1];
 	opts->destfile = argv[optind + 2];
 	
 	/* check options */
-	if (opts->destfile && !strcmp("-", opts->destfile)) {
-		opts->use_stdout = true;
+#ifdef HAVE_LIBARIB25
+	if (opts->b25 && roundstr) {
+		opts->round = (int)strtol(roundstr, &endptr, 10);
+		if (*endptr != '\0') {
+			fprintf(stderr, "Error: Parse b25 round number failed.\n");
+			validation = false;
+		}
+	}
+#endif
+
+	if (lnbstr) {
+		opts->lnb = (int)strtol(lnbstr, &endptr, 10);
+		if (*endptr != '\0') {
+			fprintf(stderr, "Error: Parse LNB number failed.\n");
+			validation = false;
+		} else {
+			switch (opts->lnb) {
+			case 0:
+			case 11:
+			case 15:
+				break;
+			default:
+				fprintf(stderr, "Error: Specified LNB value is not valid.\n");
+				validation = false;
+			}
+		}
 	}
 
-	switch (opts->lnb) {
-	case 0:
-	case 11:
-	case 15:
-		break;
-	default:
-		fprintf(stderr, "Error: Specified LNB value is not valid.\n");
-		validation = false;
+	if (dev_numstr) {
+		opts->dev_num = (int)strtol(dev_numstr, &endptr, 10);
+		if (*endptr != '\0') {
+			fprintf(stderr, "Error: Parse device number failed.\n");
+			validation = false;
+		} else if (opts->dev_num < 0) {
+			fprintf(stderr, "Error: device number must be positive.\n");
+			validation = false;
+		}
+	}
+
+	if (tsidstr) {
+		opts->tsid = (unsigned int)strtoul(tsidstr, &endptr, 0);
+		if (*endptr != '\0') {
+			fprintf(stderr, "Error: Parse TSID number failed.\n");
+			validation = false;
+		}
 	}
 
 	if (opts->tsid == 0) {
 		/* update tsid when channel is BS */
-		set_bs_tsid(opts->channel, &opts->tsid);
+		set_bs_tsid(opts->channel, &(opts->tsid));
 	}
 
-	if (parse_time(opts->recsecstr, &opts->recsec) != 0) {
+	if (parse_time(recsecstr, &opts->recsec) != 0) {
 		fprintf(stderr, "Error: Failed to parse recsec.\n");
 		validation = false;
+	}
+
+	if (opts->destfile && !strcmp("-", opts->destfile)) {
+		opts->use_stdout = true;
 	}
 
 	if (!validation) {
@@ -233,13 +284,13 @@ void show_user_input(struct recdvb_options *opts)
 		fprintf(stderr, "      Record seconds: %d\n", opts->recsec);
 	}
 	fprintf(stderr, "      Device Number: %d\n", opts->dev_num);
-	fprintf(stderr, "      TSID: %d\n", opts->dev_num);
+	fprintf(stderr, "      TSID: 0x%x\n", opts->tsid);
 	fprintf(stderr, "      LNB: %dV\n", opts->lnb);
 #ifdef HAVE_LIBARIB25
 	fprintf(stderr, "      B25 decode: %s\n", opts->b25 ? "enable" : "disable");
 	if (opts->b25) {
 		fprintf(stderr, "          strip: %s\n", opts->strip ? "enable" : "disable");
-		fprintf(stderr, "          emm: %s\n", opts->strip ? "enable" : "disable");
+		fprintf(stderr, "          emm: %s\n", opts->emm ? "enable" : "disable");
 		fprintf(stderr, "          round: %d\n", opts->round);
 	}
 #endif

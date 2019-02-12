@@ -46,9 +46,9 @@ void *reader_func(void *p)
 	int use_b25 = 0;
 	decoder *decoder = NULL;
 	decoder_options dopt = {
-		4,  /* round */
-		0,  /* strip */
-		0   /* emm */
+		opts->round,
+		opts->strip ? 1 : 0,
+		opts->emm ? 1 : 0
 	};
 	ARIB_STD_B25_BUFFER dbuf;
 #endif
