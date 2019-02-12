@@ -18,7 +18,11 @@
 #define RECDVB_DECODER_H
 
 #include <stdint.h>
+
+#ifndef RECDVB_CONFIG_H
+#define RECDVB_CONFIG_H
 #include "config.h"
+#endif
 
 #ifdef HAVE_LIBARIB25
 
