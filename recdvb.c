@@ -34,7 +34,6 @@
 #include "queue.h"
 #include "reader.h"
 #include "preset.h"
-#include "version.h"
 
 #define NEVENTS 32
 #define TUNE_TIMEOUT 5
@@ -111,7 +110,7 @@ static void show_help(char **argv)
 
 static void show_version(char **argv)
 {
-	fprintf(stderr, "%s %s\n", argv[0], version);
+	fprintf(stderr, "%s %s\n", argv[0], PACKAGE_VERSION);
 	fprintf(stderr, "recorder command for DVB tuner.\n");
 }
 

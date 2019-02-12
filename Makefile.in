@@ -5,7 +5,6 @@ bindir = @bindir@
 CC = @CC@
 
 TARGET = recdvb
-RELEASE_VERSION = "1.3.3"
 
 CFLAGS   = -std=c99 -O2 -g -pthread -Wall -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64 -D_GNU_SOURCE
 ifeq ($(CC), clang)
@@ -21,7 +20,7 @@ DEPEND = .deps
 all: $(TARGET)
 
 clean:
-	rm -f $(OBJS) $(TARGET) $(DEPEND) version.h
+	rm -f $(OBJS) $(TARGET) $(DEPEND)
 
 distclean: clean
 	rm -f Makefile config.h config.log config.status
@@ -32,11 +31,8 @@ maintainer-clean: distclean
 $(TARGET): $(OBJS)
 	$(CC) $(LDFLAGS) -o $@ $(OBJS) $(LIBS)
 
-$(DEPEND): version.h
+$(DEPEND):
 	$(CC) -MM $(OBJS:.o=.c) > $@
-
-version.h:
-	echo "static const char *version = \"$(RELEASE_VERSION)\";" > $@
 
 install: $(TARGET)
 	install -m 755 $(TARGET) $(DESTDIR)$(bindir)

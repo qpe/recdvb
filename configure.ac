@@ -1,8 +1,8 @@
 # -*- Autoconf -*-
 # Process this file with autoconf to produce a configure script.
 
-AC_PREREQ(2.59)
-AC_INIT([recdvb], [1.3.2], qpe78924356@outlook.com)
+AC_PREREQ(2.62)
+AC_INIT([recdvb], [1.3.3], qpe78924356@outlook.com)
 AC_CONFIG_SRCDIR([recdvb.c])
 AC_CONFIG_HEADERS([config.h])
 
