@@ -272,7 +272,7 @@ static int parse_options(struct recdvb_options *opts, int argc, char **argv)
 	return 0;
 }
 
-void show_user_input(struct recdvb_options *opts)
+static void show_user_input(struct recdvb_options *opts)
 {
 	fprintf(stderr, "Info: Specified options:\n");
 	fprintf(stderr, "      Channel: %s\n", opts->channel);
@@ -295,6 +295,20 @@ void show_user_input(struct recdvb_options *opts)
 #endif
 }
 
+static uint64_t diff_timespec(struct timespec *a, struct timespec *b)
+{
+	// make sure a >= b
+	if(a->tv_sec < b->tv_sec || (a->tv_sec == b->tv_sec && a->tv_nsec < b->tv_nsec)) {
+		struct timespec *c = a;
+		a = b;
+		b = c;
+	}
+	uint64_t d = a->tv_sec - b->tv_sec;
+	d *= 1000;
+	d += (a->tv_nsec - b->tv_nsec) / 1000000;
+	return d;
+}
+
 int main(int argc, char **argv)
 {
 	int i, rc;
@@ -307,7 +321,7 @@ int main(int argc, char **argv)
 	int notune_count = 0;
 	int noread_count = 0;
 
-	time_t cur_time, start_time;
+	struct timespec cur_time = {0}, start_time = {0}, read_time = {0};
 	BUFSZ   *bufptr;
 	static struct recdvb_options opts;
 
@@ -441,7 +455,7 @@ int main(int argc, char **argv)
 		goto end;
 	}
 
-	time(&start_time);
+	clock_gettime(CLOCK_MONOTONIC_RAW, &start_time);
 
 	/* event loop */
 	while (!f_exit) {
@@ -469,8 +483,8 @@ int main(int argc, char **argv)
 		}
 
 		/* stop recording */
-		time(&cur_time);
-		if ((cur_time - start_time) >= opts.recsec && opts.recsec != -1) {
+		clock_gettime(CLOCK_MONOTONIC_RAW, &cur_time);
+		if (opts.recsec != -1 && diff_timespec(&cur_time, &start_time) / 1000 >= opts.recsec) {
 			break;
 		}
 
@@ -575,12 +589,20 @@ int main(int argc, char **argv)
 					break;
 
 				}
+				if (r_byte == 0) {
+					clock_gettime(CLOCK_MONOTONIC_RAW, &read_time);
+				}
 				r_byte += bufptr->size;
 			}
 		}
 	} /* while (!f_exit) */
 
-	fprintf(stderr, "Info: Recorded %dsec\n", (int)(cur_time - start_time));
+	/* show record time info */
+	fprintf(stderr, "Info: Elapsed time %.2lfsec\n", diff_timespec(&cur_time, &start_time) / 1000.0);
+	if (read_time.tv_sec > 0 || read_time.tv_nsec) {
+		/* tuning successful. */
+		fprintf(stderr, "      (Tuning %.2lfsec)\n", diff_timespec(&read_time, &start_time) / 1000.0);
+	}
 
 end:
 

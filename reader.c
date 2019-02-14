@@ -149,7 +149,7 @@ void *reader_func(void *p)
 			int written = buf.size - size_remain;
 
 			if (written > 0) {
-				tdata->w_byte += written;
+				tdata->w_byte += (uint64_t)written;
 			}
 
 			pthread_mutex_unlock(&tdata->mutex);
@@ -157,9 +157,9 @@ void *reader_func(void *p)
 
 		/* cannot write file */
 		if (file_err) {
-
 			break;
 		}
+
 	} /* while (1) */
 
 end:

@@ -37,8 +37,8 @@ enum reader_exit_status {
 typedef struct thread_data {
 	struct recdvb_options *opts;
 	QUEUE_T *queue;
-	enum reader_exit_status status;
 	pthread_mutex_t mutex;
+	enum reader_exit_status status;
 	int alive;
 	uint64_t w_byte;
 } thread_data;
