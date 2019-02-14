@@ -14,7 +14,6 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-#include <stdbool.h>
 #include <stdlib.h>
 
 #include <sys/time.h>
@@ -56,8 +55,7 @@ void destroy_queue(QUEUE_T *p_queue)
 /* enqueue data. this function will block if queue is full. */
 int enqueue(QUEUE_T *p_queue, BUFSZ *data)
 {
-	struct timeval now;
-	struct timespec spec;
+	struct timespec now;
 	int retry_count = 0;
 
 	pthread_mutex_lock(&p_queue->mutex);
@@ -65,12 +63,12 @@ int enqueue(QUEUE_T *p_queue, BUFSZ *data)
 
 	/* wait while queue is full */
 	while (p_queue->num_avail == 0) {
-		gettimeofday(&now, NULL);
-		spec.tv_sec = now.tv_sec + 1;
-		spec.tv_nsec = now.tv_usec * 1000;
+
+		clock_gettime(CLOCK_REALTIME_COARSE, &now);
+		now.tv_sec += 1;
 
 		pthread_cond_timedwait(&p_queue->cond_avail,
-				       &p_queue->mutex, &spec);
+				       &p_queue->mutex, &now);
 		retry_count++;
 		if (retry_count > QUEUE_TIMEOUT) {
 			pthread_mutex_unlock(&p_queue->mutex);
@@ -98,8 +96,7 @@ int enqueue(QUEUE_T *p_queue, BUFSZ *data)
 /* dequeue data. this function will block if queue is empty. */
 int dequeue(QUEUE_T *p_queue, BUFSZ **data)
 {
-	struct timeval now;
-	struct timespec spec;
+	struct timespec now;
 	int retry_count = 0;
 
 	pthread_mutex_lock(&p_queue->mutex);
@@ -108,12 +105,11 @@ int dequeue(QUEUE_T *p_queue, BUFSZ **data)
 	/* wait while queue is empty */
 	while (p_queue->num_used == 0) {
 
-		gettimeofday(&now, NULL);
-		spec.tv_sec = now.tv_sec + 1;
-		spec.tv_nsec = now.tv_usec * 1000;
+		clock_gettime(CLOCK_REALTIME_COARSE, &now);
+		now.tv_sec += 1;
 
 		pthread_cond_timedwait(&p_queue->cond_used,
-				       &p_queue->mutex, &spec);
+				       &p_queue->mutex, &now);
 		retry_count++;
 		if (retry_count > QUEUE_TIMEOUT) {
 			pthread_mutex_unlock(&p_queue->mutex);
