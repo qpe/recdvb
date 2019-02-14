@@ -231,7 +231,7 @@ void frontend_show_stats(int fefd)
 	props.num = 4;
 	if (ioctl(fefd, FE_GET_PROPERTY, &props) == 0) {
 
-		fprintf(stderr, "Frontend info:");
+		fprintf(stderr, "Info:");
 
 		for (int i = 0; i < 4; ++i) {
 			for (int j = 0; j == 0 || j < prop[i].u.st.len; ++j) {
