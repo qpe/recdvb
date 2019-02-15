@@ -97,21 +97,20 @@ int enqueue(QUEUE_T *p_queue, BUFSZ *data)
 int dequeue(QUEUE_T *p_queue, BUFSZ **data)
 {
 	struct timespec now;
-	int retry_count = 0;
 
 	pthread_mutex_lock(&p_queue->mutex);
 	/* entered the critical section */
 
 	/* wait while queue is empty */
-	while (p_queue->num_used == 0) {
+	if (p_queue->num_used == 0) {
 
 		clock_gettime(CLOCK_REALTIME_COARSE, &now);
-		now.tv_sec += 1;
+		now.tv_sec += QUEUE_TIMEOUT;
 
 		pthread_cond_timedwait(&p_queue->cond_used,
 				       &p_queue->mutex, &now);
-		retry_count++;
-		if (retry_count > QUEUE_TIMEOUT) {
+
+		if (p_queue->num_used == 0) {
 			pthread_mutex_unlock(&p_queue->mutex);
 			return -1;
 		}
