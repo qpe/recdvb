@@ -318,6 +318,7 @@ int main(int argc, char **argv)
 	int f_exit = 0;
 	int tuned = 0;
 	uint64_t r_byte = 0, p_r_byte = 0;
+	uint64_t o_byte = 0;
 	int notune_count = 0;
 	int noread_count = 0;
 
@@ -521,7 +522,7 @@ int main(int argc, char **argv)
 						w_byte = tdata.w_byte;
 						pthread_mutex_unlock(&tdata.mutex);
 					}
-					fprintf(stderr, "      Read %lubyte, Write %lubyte\n", r_byte, w_byte);
+					fprintf(stderr, "      Read %lubyte, Write %lubyte, Overrun %lubyte\n", r_byte, w_byte, o_byte);
 
 					/* check timeout */
 					if (p_r_byte == r_byte) {
@@ -567,31 +568,40 @@ int main(int argc, char **argv)
 
 			} else if (evs[i].data.fd == dvrfd) {
 				/* dvr */
+
+				/* make sure event is EPOLLIN */
 				if (!(evs[i].events & EPOLLIN)) {
 					continue;
 				}
+
+				/* allocate memory for read data from dvr */
 				bufptr = malloc(sizeof(BUFSZ));
 				if (!bufptr) {
 					f_exit = 1;
 					fprintf(stderr, "Error: Cannot allocate buffer memory.\n");
 					break;
 				}
+
+				/* read dvr */
 				bufptr->size = read(dvrfd, bufptr->buffer, MAX_READ_SIZE);
 				if (bufptr->size <= 0) {
 					free(bufptr);
 					continue;
 				}
-				if (enqueue(p_queue, bufptr) != 0) {
-					/* enqueue timeout */
-					free(bufptr);
-					f_exit = 1;
-					fprintf(stderr, "Error: queue is full. timeout.\n");
-					break;
 
+				/* insert data to ring buffer */
+				if (enqueue(p_queue, bufptr) != 0) {
+					/* queue is full, dropped */
+					free(bufptr);
+					o_byte += bufptr->size;
 				}
+
+				/* set first read time */
 				if (r_byte == 0) {
 					clock_gettime(CLOCK_MONOTONIC_RAW, &read_time);
 				}
+
+				/* count up total read size */
 				r_byte += bufptr->size;
 			}
 		}
@@ -657,7 +667,7 @@ end:
 	destroy_queue(p_queue);
 
 	/* show status */
-	fprintf(stderr, "Info: Read %lubyte, Write %lubyte\n", r_byte, tdata.w_byte);
+	fprintf(stderr, "Info: Read %lubyte, Write %lubyte, Overrun %lubyte\n", r_byte, tdata.w_byte, o_byte);
 
 	return 0;
 }

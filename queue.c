@@ -55,25 +55,13 @@ void destroy_queue(QUEUE_T *p_queue)
 /* enqueue data. this function will block if queue is full. */
 int enqueue(QUEUE_T *p_queue, BUFSZ *data)
 {
-	struct timespec now;
-	int retry_count = 0;
-
 	pthread_mutex_lock(&p_queue->mutex);
 	/* entered critical section */
 
-	/* wait while queue is full */
-	while (p_queue->num_avail == 0) {
-
-		clock_gettime(CLOCK_REALTIME_COARSE, &now);
-		now.tv_sec += 1;
-
-		pthread_cond_timedwait(&p_queue->cond_avail,
-				       &p_queue->mutex, &now);
-		retry_count++;
-		if (retry_count > QUEUE_TIMEOUT) {
-			pthread_mutex_unlock(&p_queue->mutex);
-			return -1;
-		}
+	/* quit when queue is full */
+	if (p_queue->num_avail == 0) {
+		pthread_mutex_unlock(&p_queue->mutex);
+		return -1;
 	}
 
 	p_queue->buffer[p_queue->in] = data;
